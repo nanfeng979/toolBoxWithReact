@@ -19,6 +19,10 @@ contextBridge.exposeInMainWorld('ipcRenderer', {
     return ipcRenderer.invoke(channel, ...omit)
   },
 
-  // You can expose other APTs you need here.
-  // ...
+  // Mini App APIs
+  miniApp: {
+    getInstalledApps: () => ipcRenderer.invoke('mini-app:get-installed'),
+    importApp: () => ipcRenderer.invoke('mini-app:import'),
+    uninstallApp: (appId: string) => ipcRenderer.invoke('mini-app:uninstall', appId),
+  }
 })

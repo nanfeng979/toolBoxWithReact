@@ -16,7 +16,11 @@ electron.contextBridge.exposeInMainWorld("ipcRenderer", {
   invoke(...args) {
     const [channel, ...omit] = args;
     return electron.ipcRenderer.invoke(channel, ...omit);
+  },
+  // Mini App APIs
+  miniApp: {
+    getInstalledApps: () => electron.ipcRenderer.invoke("mini-app:get-installed"),
+    importApp: () => electron.ipcRenderer.invoke("mini-app:import"),
+    uninstallApp: (appId) => electron.ipcRenderer.invoke("mini-app:uninstall", appId)
   }
-  // You can expose other APTs you need here.
-  // ...
 });

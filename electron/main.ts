@@ -1,10 +1,24 @@
-import { app, BrowserWindow } from 'electron'
+import { app, BrowserWindow, ipcMain, protocol, net } from 'electron'
 import { createRequire } from 'node:module'
-import { fileURLToPath } from 'node:url'
+import { fileURLToPath, pathToFileURL } from 'node:url'
 import path from 'node:path'
+import { MiniAppService } from './services/miniAppService'
 
 const require = createRequire(import.meta.url)
 const __dirname = path.dirname(fileURLToPath(import.meta.url))
+
+// 注册特权协议，保证内部的 iframe 具有完整的 Web 功能（如 fetch 支持、跨域等）
+protocol.registerSchemesAsPrivileged([
+  { 
+    scheme: 'miniapp', 
+    privileges: { 
+      standard: true, 
+      secure: true, 
+      supportFetchAPI: true, 
+      corsEnabled: true 
+    } 
+  }
+])
 
 // The built directory structure
 //
@@ -65,4 +79,49 @@ app.on('activate', () => {
   }
 })
 
-app.whenReady().then(createWindow)
+// Initialize services
+const miniAppService = new MiniAppService();
+
+app.whenReady().then(() => {
+  // 注册自定义协议处理，用于解析形如 miniapp://[app-id]/[path] 的资源请求
+  protocol.handle('miniapp', (request) => {
+    try {
+      const url = new URL(request.url);
+      const appId = url.hostname;
+      // 兼容某些情况下的 pathname（如根目录带有斜杠）
+      const fileRelPath = decodeURIComponent(url.pathname);
+      
+      const appDir = path.join(app.getPath('userData'), 'mini-apps', appId);
+      const targetPath = path.join(appDir, fileRelPath || 'index.html');
+      
+      // 简单安全校验：防止路径穿越读取外部文件
+      if (!targetPath.startsWith(appDir)) {
+        return new Response('Access Denied', { status: 403 });
+      }
+
+      // 将本地绝对路径转发给 net.fetch 读取
+      return net.fetch(pathToFileURL(targetPath).toString());
+    } catch (err) {
+      console.error('Failed to handle miniapp protocol:', err);
+      return new Response('File practically not found', { status: 404 });
+    }
+  });
+
+  // Register IPC handlers
+  ipcMain.handle('mini-app:get-installed', () => {
+    return miniAppService.getInstalledApps();
+  });
+  
+  ipcMain.handle('mini-app:import', () => {
+    if (win) {
+      return miniAppService.importApp(win);
+    }
+    return { success: false, message: 'No window available' };
+  });
+
+  ipcMain.handle('mini-app:uninstall', (_, appId: string) => {
+    return miniAppService.uninstallApp(appId);
+  });
+
+  createWindow();
+})

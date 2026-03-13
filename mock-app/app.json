@@ -1,0 +1,7 @@
+{
+  "id": "my-mock-app",
+  "name": "Demo Mini App",
+  "version": "1.0.0",
+  "entry": "index.html",
+  "description": "A demo mini app for ToolsBox"
+}
