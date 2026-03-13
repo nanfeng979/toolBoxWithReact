@@ -1,0 +1,11 @@
+{
+  "id": "my-mock-plugin",
+  "name": "Global Dark Mode Injector",
+  "version": "1.0.0",
+  "description": "Injects dark mode styles into all mini apps",
+  "targetApps": "*",
+  "inject": {
+    "css": ["inject.css"],
+    "js": ["inject.js"]
+  }
+}

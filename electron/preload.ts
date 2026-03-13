@@ -24,5 +24,13 @@ contextBridge.exposeInMainWorld('ipcRenderer', {
     getInstalledApps: () => ipcRenderer.invoke('mini-app:get-installed'),
     importApp: () => ipcRenderer.invoke('mini-app:import'),
     uninstallApp: (appId: string) => ipcRenderer.invoke('mini-app:uninstall', appId),
+  },
+
+  // Plugin APIs
+  plugins: {
+    getInstalledPlugins: () => ipcRenderer.invoke('plugin:get-installed'),
+    importPlugin: () => ipcRenderer.invoke('plugin:import'),
+    uninstallPlugin: (pluginId: string) => ipcRenderer.invoke('plugin:uninstall', pluginId),
+    getInjectionsForApp: (appId: string) => ipcRenderer.invoke('plugin:get-injections', appId),
   }
 })

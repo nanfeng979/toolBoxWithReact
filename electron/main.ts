@@ -1,10 +1,9 @@
-import { app, BrowserWindow, ipcMain, protocol, net } from 'electron'
-import { createRequire } from 'node:module'
+import { app, BrowserWindow, ipcMain, protocol, net, webFrameMain } from 'electron'
 import { fileURLToPath, pathToFileURL } from 'node:url'
 import path from 'node:path'
 import { MiniAppService } from './services/miniAppService'
+import { PluginService } from './services/pluginService'
 
-const require = createRequire(import.meta.url)
 const __dirname = path.dirname(fileURLToPath(import.meta.url))
 
 // 注册特权协议，保证内部的 iframe 具有完整的 Web 功能（如 fetch 支持、跨域等）
@@ -53,6 +52,45 @@ function createWindow() {
     win?.webContents.send('main-process-message', (new Date).toLocaleString())
   })
 
+  // 监听子框架(iframe)加载完成事件，在主进程中直接注入插件脚本和样式，绕过跨域限制
+  win.webContents.on('did-frame-finish-load', async (_event, isMainFrame, frameProcessId, frameRoutingId) => {
+    if (isMainFrame) return;
+
+    const frame = webFrameMain.fromId(frameProcessId, frameRoutingId);
+    if (!frame) return;
+
+    const urlStr = frame.url;
+    if (urlStr && urlStr.startsWith('miniapp://')) {
+      try {
+        const parsedUrl = new URL(urlStr);
+        const appId = parsedUrl.hostname;
+        
+        // 由于 pluginService 在后面才实例化，为了避免提升(hoisting)问题，直接在这里引用全局变量
+        const { css, js } = await globalPluginService.getInjectionsForApp(appId);
+        
+        if (css) {
+          // 将 CSS 转换并作为 JS 注入
+          const injectCssCode = `
+            (function() {
+              const style = document.createElement('style');
+              style.textContent = \`${css.replace(/\\/g, '\\\\').replace(/`/g, '\\`').replace(/\$/g, '\\$')}\`;
+              document.head.appendChild(style);
+            })();
+          `;
+          await frame.executeJavaScript(injectCssCode);
+        }
+        
+        if (js) {
+          await frame.executeJavaScript(js);
+        }
+        
+        console.log(`Successfully injected plugins into ${appId} from Main Process.`);
+      } catch (err) {
+        console.error(`Failed to inject plugins to frame: ${urlStr}`, err);
+      }
+    }
+  });
+
   if (VITE_DEV_SERVER_URL) {
     win.loadURL(VITE_DEV_SERVER_URL)
   } else {
@@ -80,9 +118,13 @@ app.on('activate', () => {
 })
 
 // Initialize services
-const miniAppService = new MiniAppService();
+let globalMiniAppService: MiniAppService;
+let globalPluginService: PluginService;
 
 app.whenReady().then(() => {
+  globalMiniAppService = new MiniAppService();
+  globalPluginService = new PluginService();
+
   // 注册自定义协议处理，用于解析形如 miniapp://[app-id]/[path] 的资源请求
   protocol.handle('miniapp', (request) => {
     try {
@@ -109,18 +151,39 @@ app.whenReady().then(() => {
 
   // Register IPC handlers
   ipcMain.handle('mini-app:get-installed', () => {
-    return miniAppService.getInstalledApps();
+    return globalMiniAppService.getInstalledApps();
   });
   
   ipcMain.handle('mini-app:import', () => {
     if (win) {
-      return miniAppService.importApp(win);
+      return globalMiniAppService.importApp(win);
     }
     return { success: false, message: 'No window available' };
   });
 
   ipcMain.handle('mini-app:uninstall', (_, appId: string) => {
-    return miniAppService.uninstallApp(appId);
+    return globalMiniAppService.uninstallApp(appId);
+  });
+
+  // Plugin IPC handlers
+  ipcMain.handle('plugin:get-installed', () => {
+    return globalPluginService.getInstalledPlugins();
+  });
+
+  ipcMain.handle('plugin:import', () => {
+    if (win) {
+      return globalPluginService.importPlugin(win);
+    }
+    return { success: false, message: 'No window available' };
+  });
+
+  ipcMain.handle('plugin:uninstall', (_, pluginId: string) => {
+    return globalPluginService.uninstallPlugin(pluginId);
+  });
+  
+  // 提供给渲染侧动态获取应当注入的脚本/CSS的接口
+  ipcMain.handle('plugin:get-injections', (_, appId: string) => {
+    return globalPluginService.getInjectionsForApp(appId);
   });
 
   createWindow();

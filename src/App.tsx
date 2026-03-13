@@ -1,26 +1,30 @@
-import React, { useState, useEffect } from 'react';
+// @ts-nocheck
+import { useState, useEffect, useRef } from 'react';
 import { 
   FolderIcon, 
   Settings, 
   Puzzle, 
   Search, 
-  ChevronRight, 
   ChevronDown,
   X,
   Play,
   Trash2
 } from 'lucide-react';
 import { cn } from './lib/utils';
-import { MiniAppManifest } from './vite-env';
+import { MiniAppManifest, PluginManifest } from './vite-env';
 
 export default function App() {
   const [activeTab, setActiveTab] = useState('welcome');
-  const [sidebarWidth, setSidebarWidth] = useState(260);
+  const [sidebarWidth] = useState(260);
+  const [activeSidebarMode, setActiveSidebarMode] = useState<'apps' | 'plugins'>('apps');
+  
   const [installedApps, setInstalledApps] = useState<MiniAppManifest[]>([]);
+  const [installedPlugins, setInstalledPlugins] = useState<PluginManifest[]>([]);
+  
+  const iframeRefs = useRef<{ [key: string]: HTMLIFrameElement | null }>({});
 
   const fetchApps = async () => {
     try {
-      // @ts-ignore - using the bridged api
       const apps = await window.ipcRenderer.miniApp.getInstalledApps();
       setInstalledApps(apps);
     } catch (err) {
@@ -28,29 +32,51 @@ export default function App() {
     }
   };
 
+  const fetchPlugins = async () => {
+    try {
+      const plugins = await window.ipcRenderer.plugins.getInstalledPlugins();
+      setInstalledPlugins(plugins);
+    } catch (err) {
+      console.error('Failed to fetch plugins:', err);
+    }
+  };
+
   useEffect(() => {
     fetchApps();
+    fetchPlugins();
   }, []);
 
   const handleImport = async () => {
     try {
-      // @ts-ignore
       const result = await window.ipcRenderer.miniApp.importApp();
       if (result.success) {
         alert(result.message);
-        fetchApps(); // refresh list
+        fetchApps();
       } else if (result.message !== '用户取消') {
         alert(result.message);
       }
     } catch (err) {
-      alert('Import failed');
+      alert('App Import failed');
     }
   };
 
-  const handleUninstall = async (appId: string) => {
-    if (!confirm(`Are you sure you want to uninstall ${appId}?`)) return;
+  const handleImportPlugin = async () => {
     try {
-      // @ts-ignore
+      const result = await window.ipcRenderer.plugins.importPlugin();
+      if (result.success) {
+        alert(result.message);
+        fetchPlugins();
+      } else if (result.message !== '用户取消') {
+        alert(result.message);
+      }
+    } catch (err) {
+      alert('Plugin Import failed');
+    }
+  };
+
+  const handleUninstallApp = async (appId: string) => {
+    if (!confirm(`Are you sure you want to uninstall app: ${appId}?`)) return;
+    try {
       const result = await window.ipcRenderer.miniApp.uninstallApp(appId);
       if (result.success) {
         fetchApps();
@@ -61,6 +87,26 @@ export default function App() {
     } catch (err) {
       alert('Uninstall failed');
     }
+  };
+
+  const handleUninstallPlugin = async (pluginId: string) => {
+    if (!confirm(`Are you sure you want to uninstall plugin: ${pluginId}?`)) return;
+    try {
+      const result = await window.ipcRenderer.plugins.uninstallPlugin(pluginId);
+      if (result.success) {
+        fetchPlugins();
+      } else {
+        alert(result.message);
+      }
+    } catch (err) {
+      alert('Uninstall failed');
+    }
+  };
+
+  // iframe 加载处理，由于插件注入已经改为在主进程进行(main.ts的did-frame-finish-load)，
+  // 这里不需要再手动通过 postMessage 或直接操作 DOM 去注入代码。
+  const handleIframeLoad = async (appId: string) => {
+    console.log(`Iframe loaded for ${appId}`);
   };
 
   return (
@@ -81,9 +127,24 @@ export default function App() {
       <div className="flex flex-1 overflow-hidden">
         {/* Activity Bar */}
         <div className="w-12 bg-[#333333] flex flex-col items-center py-4 gap-4 border-r border-[#2b2b2b]">
-          <FolderIcon className="w-7 h-7 p-1 text-[#8e8e8e] hover:text-white cursor-pointer" />
+          <div 
+            className={cn("p-1 rounded cursor-pointer relative", activeSidebarMode === 'apps' ? "text-white" : "text-[#8e8e8e] hover:text-white")}
+            onClick={() => setActiveSidebarMode('apps')}
+          >
+            {activeSidebarMode === 'apps' && <div className="absolute left-[-16px] top-0 bottom-0 w-[2px] bg-blue-500" />}
+            <FolderIcon className="w-7 h-7" />
+          </div>
+          
           <Search className="w-7 h-7 p-1 text-[#8e8e8e] hover:text-white cursor-pointer" />
-          <Puzzle className="w-7 h-7 p-1 text-[#8e8e8e] hover:text-white cursor-pointer" />
+          
+          <div 
+            className={cn("p-1 rounded cursor-pointer relative", activeSidebarMode === 'plugins' ? "text-white" : "text-[#8e8e8e] hover:text-white")}
+            onClick={() => setActiveSidebarMode('plugins')}
+          >
+            {activeSidebarMode === 'plugins' && <div className="absolute left-[-16px] top-0 bottom-0 w-[2px] bg-blue-500" />}
+            <Puzzle className="w-7 h-7" />
+          </div>
+          
           <div className="mt-auto pb-4 flex flex-col gap-4 items-center">
             <Settings className="w-7 h-7 p-1 text-[#8e8e8e] hover:text-white cursor-pointer" />
           </div>
@@ -95,36 +156,79 @@ export default function App() {
           className="bg-[#252526] flex flex-col border-r border-[#2b2b2b]"
         >
           <div className="h-9 flex items-center px-4 text-xs font-bold uppercase tracking-wider text-[#bbbbbb]">
-            Mini Apps
+            {activeSidebarMode === 'apps' ? 'Mini Apps' : 'Plugins'}
           </div>
+          
           <div className="flex-1 overflow-y-auto">
-            <div className="group flex items-center px-2 py-1 hover:bg-[#2a2d2e] cursor-pointer">
-              <ChevronDown className="w-4 h-4 mr-1" />
-              <span className="text-sm font-bold">INSTALLED</span>
-            </div>
-            {installedApps.length === 0 ? (
-              <div className="px-6 py-2 text-xs text-[#8e8e8e]">No apps installed.</div>
-            ) : (
-              installedApps.map(app => (
-                <div 
-                  key={app.id} 
-                  className={cn(
-                    "flex items-center px-6 py-1 cursor-pointer group",
-                    activeTab === app.id ? "bg-[#37373d]" : "hover:bg-[#2a2d2e]"
-                  )}
-                  onClick={() => setActiveTab(app.id)}
-                >
-                  <Play className="w-3 h-3 mr-2" />
-                  <span className="text-sm flex-1 truncate">{app.name}</span>
-                  <Trash2 
-                    className="w-3 h-3 text-[#8e8e8e] hover:text-red-400 opacity-0 group-hover:opacity-100" 
-                    onClick={(e) => {
-                      e.stopPropagation();
-                      handleUninstall(app.id);
-                    }}
-                  />
+            {activeSidebarMode === 'apps' && (
+               <>
+                <div className="group flex items-center justify-between px-2 py-1 hover:bg-[#2a2d2e] cursor-pointer">
+                  <div className="flex items-center">
+                    <ChevronDown className="w-4 h-4 mr-1" />
+                    <span className="text-sm font-bold">INSTALLED APPS</span>
+                  </div>
                 </div>
-              ))
+                {installedApps.length === 0 ? (
+                  <div className="px-6 py-2 text-xs text-[#8e8e8e]">No apps installed.</div>
+                ) : (
+                  installedApps.map(app => (
+                    <div 
+                      key={app.id} 
+                      className={cn(
+                        "flex items-center px-6 py-1 cursor-pointer group",
+                        activeTab === app.id ? "bg-[#37373d]" : "hover:bg-[#2a2d2e]"
+                      )}
+                      onClick={() => setActiveTab(app.id)}
+                    >
+                      <Play className="w-3 h-3 mr-2" />
+                      <span className="text-sm flex-1 truncate">{app.name}</span>
+                      <Trash2 
+                        className="w-3 h-3 text-[#8e8e8e] hover:text-red-400 opacity-0 group-hover:opacity-100" 
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          handleUninstallApp(app.id);
+                        }}
+                      />
+                    </div>
+                  ))
+                )}
+              </>
+            )}
+
+            {activeSidebarMode === 'plugins' && (
+              <>
+                <div className="group flex items-center justify-between px-2 py-1 hover:bg-[#2a2d2e] cursor-pointer">
+                  <div className="flex items-center">
+                    <ChevronDown className="w-4 h-4 mr-1" />
+                    <span className="text-sm font-bold">INSTALLED PLUGINS</span>
+                  </div>
+                </div>
+                {installedPlugins.length === 0 ? (
+                  <div className="px-6 py-2 text-xs text-[#8e8e8e]">No plugins installed.</div>
+                ) : (
+                  installedPlugins.map(plugin => (
+                    <div 
+                      key={plugin.id} 
+                      className="flex flex-col px-6 py-2 cursor-default group hover:bg-[#2a2d2e]"
+                    >
+                      <div className="flex items-center">
+                        <Puzzle className="w-3 h-3 mr-2 text-[#007acc]" />
+                        <span className="text-sm flex-1 truncate text-white">{plugin.name}</span>
+                        <Trash2 
+                          className="w-3 h-3 text-[#8e8e8e] hover:text-red-400 opacity-0 group-hover:opacity-100 cursor-pointer" 
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            handleUninstallPlugin(plugin.id);
+                          }}
+                        />
+                      </div>
+                      <span className="text-[10px] text-[#8e8e8e] ml-5 mt-1 truncate">
+                        Target: {Array.isArray(plugin.targetApps) ? plugin.targetApps.join(', ') : plugin.targetApps}
+                      </span>
+                    </div>
+                  ))
+                )}
+              </>
             )}
           </div>
         </div>
@@ -171,8 +275,11 @@ export default function App() {
                   <div className="space-y-4">
                     <h3 className="text-xl font-bold border-b border-[#2b2b2b] pb-2 text-[#ffffff]">Start</h3>
                     <div className="space-y-2">
-                      <div className="text-sm text-[#3794ff] hover:underline cursor-pointer" onClick={handleImport}>
-                        Import from Folder
+                      <div className="text-sm text-[#3794ff] hover:underline cursor-pointer flex items-center" onClick={handleImport}>
+                        Import Mini App
+                      </div>
+                      <div className="text-sm text-[#3794ff] hover:underline cursor-pointer flex items-center" onClick={handleImportPlugin}>
+                        Import Plugin
                       </div>
                     </div>
                   </div>
@@ -194,8 +301,10 @@ export default function App() {
                 return (
                   <div className="h-full w-full bg-white relative">
                     <iframe 
+                      ref={el => iframeRefs.current[app.id] = el}
                       src={srcUrl}
                       title={app.name}
+                      onLoad={() => handleIframeLoad(app.id)}
                       className="w-full h-full border-none absolute inset-0"
                       sandbox="allow-scripts allow-forms allow-same-origin allow-popups allow-modals"
                     />

@@ -22,5 +22,12 @@ electron.contextBridge.exposeInMainWorld("ipcRenderer", {
     getInstalledApps: () => electron.ipcRenderer.invoke("mini-app:get-installed"),
     importApp: () => electron.ipcRenderer.invoke("mini-app:import"),
     uninstallApp: (appId) => electron.ipcRenderer.invoke("mini-app:uninstall", appId)
+  },
+  // Plugin APIs
+  plugins: {
+    getInstalledPlugins: () => electron.ipcRenderer.invoke("plugin:get-installed"),
+    importPlugin: () => electron.ipcRenderer.invoke("plugin:import"),
+    uninstallPlugin: (pluginId) => electron.ipcRenderer.invoke("plugin:uninstall", pluginId),
+    getInjectionsForApp: (appId) => electron.ipcRenderer.invoke("plugin:get-injections", appId)
   }
 });
