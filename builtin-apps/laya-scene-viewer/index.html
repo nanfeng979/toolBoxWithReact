@@ -79,7 +79,7 @@
         }
 
         const sceneData = await response.json();
-        renderSceneOnCanvas(sceneData, canvas);
+        doLoadAndRender(sceneData, cleanNormPath, canvas);
       } catch (err) {
         errorBox.style.display = 'block';
         errorBox.textContent = err.toString();
@@ -87,7 +87,63 @@
       }
     }
 
-    function renderSceneOnCanvas(sceneNode, canvas) {
+    async function resolveAssetUrl(scenePath, skinName) {
+      const parts = scenePath.split('/');
+      parts.pop(); // remove file name
+      
+      while (parts.length > 0) {
+        const testBase = parts.join('/') + '/Laya/assets/' + skinName;
+        const testUrl = `workspace-file://${testBase}`;
+        try {
+          const res = await fetch(testUrl, { method: 'GET' });
+          if (res.ok) {
+             return testUrl;
+          }
+        } catch (e) {}
+        parts.pop(); // go up one level
+      }
+      
+      // fallback
+      const fallbackOrigPath = scenePath.split('/').slice(0, -1).join('/') + '/' + skinName;
+      return `workspace-file://${fallbackOrigPath}`;
+    }
+
+    async function preloadImages(node, scenePath, imageCache) {
+      const p = node.props || {};
+      const skin = p.skin || p.texture;
+
+      if ((node.type === 'Image' || node.type === 'Sprite') && skin) {
+        if (!imageCache[skin]) {
+           const url = await resolveAssetUrl(scenePath, skin);
+           await new Promise((resolve) => {
+             const img = new Image();
+             img.onload = () => {
+               imageCache[skin] = img;
+               resolve();
+             };
+             img.onerror = () => {
+               console.warn("Failed to load image:", url);
+               resolve(); // still resolve to not block
+             };
+             img.src = url;
+           });
+        }
+      }
+
+      if (node.child && Array.isArray(node.child)) {
+        for (const childNode of node.child) {
+          await preloadImages(childNode, scenePath, imageCache);
+        }
+      }
+    }
+
+    async function doLoadAndRender(sceneData, scenePath, canvas) {
+      const imageCache = {};
+      await preloadImages(sceneData, scenePath, imageCache);
+      renderSceneOnCanvas(sceneData, canvas, imageCache);
+    }
+
+    function renderSceneOnCanvas(sceneNode, canvas, imageCache) {
       const ctx = canvas.getContext('2d');
       if (sceneNode.type === 'Scene') {
         const p = sceneNode.props || {};
@@ -98,11 +154,11 @@
       }
 
       ctx.save();
-      _renderNodeCanvas(sceneNode, ctx, 0, 0);
+      _renderNodeCanvas(sceneNode, ctx, 0, 0, imageCache);
       ctx.restore();
     }
 
-    function _renderNodeCanvas(node, ctx, parentOffsetX, parentOffsetY) {
+    function _renderNodeCanvas(node, ctx, parentOffsetX, parentOffsetY, imageCache) {
       const p = node.props || {};
       const x = parentOffsetX + (p.x || 0);
       const y = parentOffsetY + (p.y || 0);
@@ -144,11 +200,20 @@
         lines.forEach((line, index) => {
           ctx.fillText(line, x + alignOffset, startY + (index * fontSize * 1.2));
         });
+      } else if (node.type === 'Image' || node.type === 'Sprite') {
+        const skinName = p.skin || p.texture;
+        if (skinName && imageCache && imageCache[skinName]) {
+          const img = imageCache[skinName];
+          // If node has width/height, stretch it. Otherwise use image native size.
+          const drawW = width > 0 ? width : img.width;
+          const drawH = height > 0 ? height : img.height;
+          ctx.drawImage(img, x, y, drawW, drawH);
+        }
       }
 
       if (node.child && Array.isArray(node.child)) {
         for (const childNode of node.child) {
-          _renderNodeCanvas(childNode, ctx, x, y);
+          _renderNodeCanvas(childNode, ctx, x, y, imageCache);
         }
       }
     }

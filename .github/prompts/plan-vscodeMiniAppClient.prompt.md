@@ -38,11 +38,16 @@
    - 需求 1: 支持递归读取 `.scene` JSON，根据 `child` 等级生成树形组件结构。(已完成)
    - 需求 2: 针对 `"type": "Label"` 节点的渲染，实现 `text`, `align`, `valign`, `color`, `fontSize` 指令到 Canvas 绘制的转换映射。(已完成)
 
-6. **Phase 8.5: Scene Viewer 进阶 (图片沙箱透传渲染)** *(Next)*
-   - 目标: 让 Canvas 能够结合 `1.png` 等工程外部图片。
-   - 实现思路: 拦截 `"Sprite"` 或 `"Image"` 组件。利用 `workspace-file://` 协议获取绝对图片 URL，通过 `new Image()` 的 onload 回调实现将跨沙盒的文件绘制回画布，真正打通游戏面板与本地工程的文件壁垒。
+6. **Phase 8.5: Scene Viewer 进阶 (图片沙箱透传渲染) ✅**
+   - 目标: 让 Canvas 能够识别并渲染 `Image` 与 `Sprite` 组件中的 `skin` 或 `texture` 指向的工程外部图片。
+   - 寻址策略 (Laya 机制): 针对 `.scene` 所在路径，向上遍历递归寻找名为 `Laya` 的父级文件夹，然后匹配到其子目录 `assets`，以此作为根目录解析 `skin` 等相对路径资源。
+   - 实现方案: 利用 `workspace-file://` 配合上述相对路径策略获取绝对图片 URL，通过异步机制预加载 `new Image()`，最后转交给 Canvas 的 `ctx.drawImage` 进行绘制。由于通过宿主特权协议，完美跨越了 iframe 中的 CORS 阻碍。
 
-7. **Phase 9: 动态 UI 侧边栏/状态栏注入** *(Pending)*
+7. **Phase 8.6: 探索支持可视化编辑与保存 (Visual Write Capability) 🏃(Next)**
+   - **目标**: 将目前的“查看器 (Viewer)”向“编辑器 (Editor)”升级，以验证小程序修改沙盒外文件的能力。
+   - **内容**: 支持在画布上简单的鼠标拖拽 (Drag & Drop) 对象来修改 x/y 坐标；通过 `window.hostApi.writeFile` (即将实现) 将改动反写回本地 `.scene` JSON，真正实现对私有游戏格式文件的可视化双向修改闭环。
+
+8. **Phase 9: 动态 UI 侧边栏/状态栏注入** *(Pending)*
 
 ~~**未来考虑：应用市场与云端分发 (App/Plugin Store)**~~ *(延迟至后期迭代)*
    - 客户端内部实现一个类似 VS Code Extension 商店的面板。
