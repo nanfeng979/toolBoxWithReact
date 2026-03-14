@@ -17,6 +17,15 @@ protocol.registerSchemesAsPrivileged([
       supportFetchAPI: true, 
       corsEnabled: true 
     } 
+  },
+  { 
+    scheme: 'workspace-file', 
+    privileges: { 
+      standard: true, 
+      secure: true, 
+      supportFetchAPI: true, 
+      corsEnabled: true 
+    } 
   }
 ])
 
