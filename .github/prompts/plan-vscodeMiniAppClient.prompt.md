@@ -8,14 +8,9 @@
 
 **Steps**
 
-*\* (✅ 已完成) Phase 1-3: 项目初始化、小程序管理服务、插件目录扫描与动态注入支持。*
+*\* (✅ 已完成) Phase 1-4: 项目初始化、小程序管理、插件注入、以及基于 Zustand 的多标签页 (Tabs) 状态保活逻辑。*
 
-1. **Phase 4: 多标签页与生命周期保活 (Tabs & Keep-Alive)**
-   - 将主视图的单选状态切换（`activeTab`）升级为多标签管理器（如 `Zustand` 维护 `openTabs: App[]`）。
-   - 实现顶部 Tab 栏，支持切换、关闭等常见逻辑（类似 VS Code 的打开文档视图）。
-   - **核心改造**: 对打开的各个小程序 `<iframe sandbox>` 使用 DOM 保活（例如通过 `className="hidden"` 或 `display: none` 隐藏非活跃的 iframe 元素），而不是在切换时把它们从 DOM 中移除，避免应用重新处于 loading 状态导致用户在里边填的数据丢失。
-
-2. **Phase 5: 双向宿主 API 通信机制 (Host API Bridge)**
+1. **Phase 5: 双向宿主 API 通信机制 (Host API Bridge)**
    - 目前注入是“从上到下”单向的，要让各个小程序真正具备与系统交互的能力，需要建立“从下到上”调用特权能力的通道。
    - 既然已改为通过主进程注入脚本，可以考虑利用 `preload` 脚本在子应用环境中暴露受限的 API，或者在注入的 JS 脚本中定义与宿主通信的接口（例如通过 `window.chrome.webview.postMessage` 或在 Electron 允许同源的情况下利用 `ipcRenderer`）。
    - 暴露基础 **Host API**，例如：
@@ -23,11 +18,17 @@
      - `OPEN_FILE_DIALOG`（调取主进程 `dialog`）。
      - `GET_THEME_COLOR`（向小程序同步宿主的黑暗/明亮模式配色）。
 
-3. **Phase 6: 全局命令面板与快捷键 (Command Palette)**
+2. **Phase 6: 全局命令面板与快捷键 (Command Palette)**
    - 监听全局 `Ctrl+Shift+P` (或 `Cmd+Shift+P`) 快捷键。
    - 呼出中间悬浮的命令搜索框。
    - 将所有本地已安装的小程序名称注册为启动命令（例如输入 "App" 就能快速呼出来切换过去）。
 
+3. **Phase 7: 应用市场与云端分发 (App/Plugin Store)** *(🆕 新增建议)*
+   - 客户端内部实现一个类似 VS Code Extension 商店的面板。
+   - 配置一个远端 JSON 文件作为 Registry，列出可用的最新小程序和插件。
+   - 允许用户在一个统一的 UI 界面中进行在线预览、下载 (Download) 并自动解压部署（通过调用现有的 import 逻辑的增强版）。
+   - 引入版本管理与自动更新检测机制。
+   
 **Relevant files**
 - `src/App.tsx` — 升级改造，引入数组型多 Tabs 渲染与 DOM 保活逻辑。
 - `src/stores/appStore.ts` *(需新建)* — 引入 Zustand 面向未来管理打开的 Tabs、侧边栏宽度、通知等全局客户端状态。

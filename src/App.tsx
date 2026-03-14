@@ -1,20 +1,12 @@
 // @ts-nocheck
 import { useState, useEffect, useRef } from 'react';
-import { 
-  FolderIcon, 
-  Settings, 
-  Puzzle, 
-  Search, 
-  ChevronDown,
-  X,
-  Play,
-  Trash2
-} from 'lucide-react';
+import { Settings, FolderIcon, Puzzle, Search, ChevronDown, X, Play, Trash2 } from 'lucide-react';
 import { cn } from './lib/utils';
 import { MiniAppManifest, PluginManifest } from './vite-env';
+import { useAppStore } from './stores/appStore';
 
 export default function App() {
-  const [activeTab, setActiveTab] = useState('welcome');
+  const { activeTab, setActiveTab, openTabs, openApp, closeTab } = useAppStore();
   const [sidebarWidth] = useState(260);
   const [activeSidebarMode, setActiveSidebarMode] = useState<'apps' | 'plugins'>('apps');
   
@@ -80,7 +72,7 @@ export default function App() {
       const result = await window.ipcRenderer.miniApp.uninstallApp(appId);
       if (result.success) {
         fetchApps();
-        if (activeTab === appId) setActiveTab('welcome');
+        closeTab(appId);
       } else {
         alert(result.message);
       }
@@ -176,7 +168,7 @@ export default function App() {
                         "flex items-center px-6 py-1 cursor-pointer group",
                         activeTab === app.id ? "bg-[#37373d]" : "hover:bg-[#2a2d2e]"
                       )}
-                      onClick={() => setActiveTab(app.id)}
+                      onClick={() => openApp(app)}
                     >
                       <Play className="w-3 h-3 mr-2" />
                       <span className="text-sm flex-1 truncate">{app.name}</span>
@@ -245,17 +237,21 @@ export default function App() {
               <span className="text-xs truncate flex-1">Welcome</span>
             </div>
             
-            {installedApps.filter(app => activeTab === app.id).map(app => (
+            {openTabs.map(app => (
               <div 
                 key={`tab-${app.id}`}
-                className="flex items-center px-3 border-r border-[#1e1e1e] cursor-pointer min-w-[120px] max-w-[200px] bg-[#1e1e1e] text-white"
+                className={cn(
+                  "flex items-center px-3 border-r border-[#1e1e1e] cursor-pointer min-w-[120px] max-w-[200px]",
+                  activeTab === app.id ? "bg-[#1e1e1e] text-white" : "bg-[#2d2d2d] text-[#969696]"
+                )}
+                onClick={() => setActiveTab(app.id)}
               >
                 <span className="text-xs truncate flex-1">{app.name}</span>
                 <X 
                   className="w-3 h-3 ml-2 hover:bg-[#454545] rounded" 
                   onClick={(e) => {
                     e.stopPropagation();
-                    setActiveTab('welcome');
+                    closeTab(app.id);
                   }}
                 />
               </div>
@@ -264,7 +260,7 @@ export default function App() {
 
           {/* View Content */}
           <div className="flex-1 overflow-auto relative">
-            {activeTab === 'welcome' ? (
+            <div className={cn("absolute inset-0", activeTab === 'welcome' ? 'block' : 'hidden')}>
               <div className="p-8">
                 <h1 className="text-4xl font-light mb-4 text-[#ffffff]">ToolsBox</h1>
                 <p className="text-[#8e8e8e] text-lg mb-8">A VS Code-like desktop container for Mini Apps & Plugins.</p>
@@ -287,29 +283,27 @@ export default function App() {
                   </div>
                 </div>
               </div>
-            ) : (
-              (() => {
-                const app = installedApps.find(a => a.id === activeTab);
-                if (!app) return <div className="p-8 text-red-500">App missing or uninstalled.</div>;
-                
-                // Construct the miniapp protocol URL based on the manifest's entry point
-                // Usually entry is like "index.html"
-                const srcUrl = `miniapp://${app.id}/${app.entry.replace(/^\/+/, '')}`;
+            </div>
 
-                return (
-                  <div className="h-full w-full bg-white relative">
-                    <iframe 
-                      ref={el => iframeRefs.current[app.id] = el}
-                      src={srcUrl}
-                      title={app.name}
-                      onLoad={() => handleIframeLoad(app.id)}
-                      className="w-full h-full border-none absolute inset-0"
-                      sandbox="allow-scripts allow-forms allow-same-origin allow-popups allow-modals"
-                    />
-                  </div>
-                );
-              })()
-            )}
+            {/* Render all open tabs, hidden if not active */}
+            {openTabs.map(app => {
+              const srcUrl = `miniapp://${app.id}/${app.entry.replace(/^\/+/, '')}`;
+              return (
+                <div 
+                  key={app.id} 
+                  className={cn("h-full w-full bg-white relative", activeTab === app.id ? 'block' : 'hidden')}
+                >
+                  <iframe 
+                    ref={el => iframeRefs.current[app.id] = el}
+                    src={srcUrl}
+                    title={app.name}
+                    onLoad={() => handleIframeLoad(app.id)}
+                    className="w-full h-full border-none absolute inset-0"
+                    sandbox="allow-scripts allow-forms allow-same-origin allow-popups allow-modals"
+                  />
+                </div>
+              );
+            })}
           </div>
         </div>
       </div>
