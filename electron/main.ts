@@ -3,6 +3,7 @@ import { fileURLToPath, pathToFileURL } from 'node:url'
 import path from 'node:path'
 import { MiniAppService } from './services/miniAppService'
 import { PluginService } from './services/pluginService'
+import { ExplorerService } from './services/explorerService'
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url))
 
@@ -125,6 +126,7 @@ let globalPluginService: PluginService;
 app.whenReady().then(() => {
   globalMiniAppService = new MiniAppService();
   globalPluginService = new PluginService();
+  new ExplorerService();
 
   // 注册自定义协议处理，用于解析形如 miniapp://[app-id]/[path] 的资源请求
   protocol.handle('miniapp', (request) => {

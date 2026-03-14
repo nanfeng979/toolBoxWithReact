@@ -1,15 +1,16 @@
 // @ts-nocheck
 import { useState, useEffect, useRef } from 'react';
-import { Settings, FolderIcon, Puzzle, Search, ChevronDown, X, Play, Trash2 } from 'lucide-react';
+import { Settings, FolderIcon, Puzzle, Search, ChevronDown, X, Play, Trash2, LayoutTemplate } from 'lucide-react';
 import { cn } from './lib/utils';
 import { MiniAppManifest, PluginManifest } from './vite-env';
 import { useAppStore } from './stores/appStore';
 import { CommandPalette } from './components/CommandPalette';
+import { FileExplorer } from './components/FileExplorer';
 
 export default function App() {
-  const { activeTab, setActiveTab, openTabs, openApp, closeTab, setCommandPaletteOpen } = useAppStore();
+  const { activeTab, setActiveTab, openTabs, openApp, closeTab, setCommandPaletteOpen, workspacePath, fileTree, setWorkspace } = useAppStore();
   const [sidebarWidth] = useState(260);
-  const [activeSidebarMode, setActiveSidebarMode] = useState<'apps' | 'plugins'>('apps');
+  const [activeSidebarMode, setActiveSidebarMode] = useState<'apps' | 'plugins' | 'explorer'>('apps');
   
   const [installedApps, setInstalledApps] = useState<MiniAppManifest[]>([]);
   const [installedPlugins, setInstalledPlugins] = useState<PluginManifest[]>([]);
@@ -96,6 +97,18 @@ export default function App() {
     }
   };
 
+  const handleOpenFolder = async () => {
+    try {
+      const result = await window.ipcRenderer.invoke('explorer:open-folder');
+      if (result) {
+        setWorkspace(result.path, result.tree);
+        setActiveSidebarMode('explorer');
+      }
+    } catch (err) {
+      console.error('Failed to open folder:', err);
+    }
+  };
+
   const handleIframeLoad = async (appId: string) => {
     console.log(`Iframe loaded for ${appId}`);
   };
@@ -104,8 +117,24 @@ export default function App() {
     <div className="flex h-screen w-screen flex-col bg-[#1e1e1e] text-[#cccccc] select-none">
       {/* Menu Bar / Title Bar */}
       <div className="h-9 flex items-center bg-[#323233] px-3 text-sm border-b border-[#2b2b2b] drag">
-        <div className="flex gap-4 no-drag">
-          <span className="hover:bg-[#454545] px-2 py-1 rounded cursor-default">File</span>
+        <div className="flex gap-4 no-drag relative group/file">
+          <span className="hover:bg-[#454545] px-2 py-1 rounded cursor-pointer peer">File</span>
+          {/* Simple Dropdown simulation */}
+          <div className="absolute top-8 left-0 w-64 bg-[#252526] border border-[#454545] shadow-lg hidden peer-hover:block hover:block z-[100] py-1 text-xs">
+            <div className="px-4 py-1.5 hover:bg-[#007acc] hover:text-white cursor-pointer flex justify-between">
+              <span>New File</span>
+              <span className="text-[#8e8e8e]">Ctrl+N</span>
+            </div>
+            <div className="px-4 py-1.5 hover:bg-[#007acc] hover:text-white cursor-pointer flex justify-between" onClick={handleOpenFolder}>
+              <span>Open Folder...</span>
+              <span className="text-[#8e8e8e]">Ctrl+K Ctrl+O</span>
+            </div>
+            <div className="border-t border-[#454545] my-1"></div>
+            <div className="px-4 py-1.5 hover:bg-[#007acc] hover:text-white cursor-pointer" onClick={handleImport}>
+              <span>Import Mini App...</span>
+            </div>
+          </div>
+
           <span className="hover:bg-[#454545] px-2 py-1 rounded cursor-default">Edit</span>
           <span className="hover:bg-[#454545] px-2 py-1 rounded cursor-default">Selection</span>
           <span className="hover:bg-[#454545] px-2 py-1 rounded cursor-default">View</span>
@@ -118,6 +147,14 @@ export default function App() {
       <div className="flex flex-1 overflow-hidden">
         {/* Activity Bar */}
         <div className="w-12 bg-[#333333] flex flex-col items-center py-4 gap-4 border-r border-[#2b2b2b]">
+          <div 
+            className={cn("p-1 rounded cursor-pointer relative", activeSidebarMode === 'explorer' ? "text-white" : "text-[#8e8e8e] hover:text-white")}
+            onClick={() => setActiveSidebarMode('explorer')}
+          >
+            {activeSidebarMode === 'explorer' && <div className="absolute left-[-16px] top-0 bottom-0 w-[2px] bg-blue-500" />}
+            <LayoutTemplate className="w-7 h-7 p-1" />
+          </div>
+
           <div 
             className={cn("p-1 rounded cursor-pointer relative", activeSidebarMode === 'apps' ? "text-white" : "text-[#8e8e8e] hover:text-white")}
             onClick={() => setActiveSidebarMode('apps')}
@@ -154,6 +191,10 @@ export default function App() {
           </div>
           
           <div className="flex-1 overflow-y-auto">
+            {activeSidebarMode === 'explorer' && (
+              <FileExplorer tree={fileTree} rootName={workspacePath} />
+            )}
+
             {activeSidebarMode === 'apps' && (
                <>
                 <div className="group flex items-center justify-between px-2 py-1 hover:bg-[#2a2d2e] cursor-pointer">

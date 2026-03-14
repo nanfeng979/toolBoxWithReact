@@ -16,15 +16,18 @@
    - 在 preload 脚本中利用 `window.location.protocol === 'miniapp:'` 进行环境嗅探，并通过 `contextBridge` 注入受限的特权方法。
    - 提供了诸如调起系统通知、原生文件选择器等高级 API，测试证实可用 `window.hostApi.showNotification` 等方法。
 
-2. **Phase 6: 全局命令面板与快捷键 (Command Palette) 🏃(Next)**
+2. **Phase 6: 全局命令面板与快捷键 (Command Palette) ✅**
    - 监听全局 `Ctrl+Shift+P` (或 `Cmd+Shift+P`) 快捷键。
    - 呼出中间悬浮的命令搜索框。
-   - 将所有本地已安装的小程序名称注册为启动命令（例如输入 "App" 就能快速呼出来切换过去）。
+   - 将所有本地已安装的小程序名称注册为启动命令。
 
-3. **Phase 7: 动态 UI 侧边栏/状态栏注入 (Advanced Plugin Capabilities)** *(🆕 新增建议)*
-   - 除了将 JS 代码注入对应的 iframe 内部，插件应该也能够向宿主 React 应用程序“打桩”。
-   - 例如，提供一个机制，让特定的插件可以在左侧边栏 (Activity Bar) 注册一个新的 Icon，或者在底部状态栏增加一个展示控件，真正向完整的 VS Code 形态靠拢。
-   - 需要宿主的 React 组件暴露动态注册点 (Slot/Registry)。
+3. **Phase 7: 原生资源管理器 (File Explorer) 🏃(Next)**
+   - **文件夹授权**: 在菜单栏 `File -> Open Folder` 或侧边栏快捷入口通过原生对话框选择一个物理文件夹。
+   - **虚拟树渲染**: 递归读取文件夹结构（支持过滤 `node_modules` 等），在左侧 Side Bar 展示可折叠的目录树。
+   - **基础交互**: 支持点击折叠/展开。
+   - **目的**: 为后期“基于文件夹的小程序/插件开发测试”提供基础环境。
+
+~~**Phase 8: 动态 UI 侧边栏/状态栏注入**~~ *(延迟至未来考虑)*
 
 ~~**未来考虑：应用市场与云端分发 (App/Plugin Store)**~~ *(延迟至后期迭代)*
    - 客户端内部实现一个类似 VS Code Extension 商店的面板。
@@ -38,6 +41,7 @@
 1. **多标签测试**: 打开小程序 A，在里边做一些交互，然后打开小程序 B 并切换回来，确认小程序 A 的输入没有因为重新渲染而丢失。
 2. **API 模块测试 (无 postMessage)**: 导入 `mock-api-app`。点击它内部的按钮，测试是否能通过 `window.hostApi` （而非繁琐的 postMessage）成功唤起原生的系统通知以及 Windows 文件选择器，并且确认结果能够原路 Promise 返回。
 3. **快捷键测试**: 使用 `Ctrl+Shift+P` 能够调出居中的搜索框，支持模糊搜索本地小程序并打开。
+4. **资源管理器测试**: 点击 `File -> Open Folder`，选择一个包含子目录的项目。确认侧边栏出现文件树，且点击文件夹图标能正常切换展开/收起状态。
 
 **Decisions**
 - **保活决策**: iframe 的 `display: none` 保活是低成本且兼容性好的方案。
