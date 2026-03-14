@@ -28,8 +28,8 @@
    - **目的**: 为后期“基于文件夹的小程序/插件开发测试”提供基础环境。
 
 4. **Phase 8: Custom Editor 体系与小程序多开 (Multi-Instance Mini Apps) 🏃(Next)**
-   - **8.1 小程序多实例支持 (Multi-Instance)**: 重构 Tab 系统（从原本依赖唯一的 `app.id` 改为依赖唯一的 `tabId`），使得同一个小程序（如文本编辑器、场景渲染器）可以被实例化多次，挂载在不同的 iframe 中。
-   - **8.2 文件后缀拦截器体系 (File Extension Interceptor)**: 点击带后缀的文件时，通过注册表决定是用兜底的原生 Monaco Editor 打开，还是实例化特定的 Mini App（如 `.scene` 后缀交由专门的小程序渲染）。
+   - **8.1 小程序多实例支持 (Multi-Instance) ✅**: 重构 Tab 系统（依靠唯一 `tabId`），同一个小程序可被实例化多次隔离运行。
+   - **8.2 文件后缀拦截器体系 (File Extension Interceptor) ✅**: 允许将特定文件后缀（如 `.scene`）映射到对应的小程序（如 `laya-scene-viewer`）。未能匹配的默认降级为自带的原生 Monaco Editor (只读预览)。
    - **8.3 沙箱工作区资源访问 (Workspace Access)**: 扩展 `hostApi` 甚至新增 `workspace-file://` 本地协议，允许受限沙箱读取或写入当前打开的物理工作区内的相关静态资源。
 
 ~~**Phase 9: 动态 UI 侧边栏/状态栏注入**~~ *(延迟至未来考虑)*
@@ -37,6 +37,9 @@
 ~~**未来考虑：应用市场与云端分发 (App/Plugin Store)**~~ *(延迟至后期迭代)*
    - 客户端内部实现一个类似 VS Code Extension 商店的面板。
    - 允许用户在一个统一的 UI 界面中进行在线预览、下载并自动解压部署。
+
+~~**未来考虑：编辑器读写能力 (Write Capability)**~~
+   - 对原生 Editor 组件及 `hostApi` 追加 `writeFile` 能力并引入保存快捷键 (Ctrl+S)。
 
 ~~**未来考虑：小程序与资源管理器的互联 (Selection Sync)**~~
    - 资源管理器不仅用于展示。点击文件时，如果当前活跃的小程序订阅了文件选择事件，则将文件信息发送给它进行联动。

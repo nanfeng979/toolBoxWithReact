@@ -11,14 +11,14 @@ interface FileTreeItemProps {
 
 const FileTreeItem: React.FC<FileTreeItemProps> = ({ node, level }) => {
   const [isOpen, setIsOpen] = useState(false);
-  const openEditor = useAppStore(state => state.openEditor);
+  const openFile = useAppStore(state => state.openFile);
 
   const handleClick = () => {
     if (node.isDirectory) {
       setIsOpen(!isOpen);
     } else {
-      // It's a file, open it in the editor
-      openEditor(node.path, node.name);
+      // It's a file, pass to router
+      openFile(node.path, node.name);
     }
   };
 
