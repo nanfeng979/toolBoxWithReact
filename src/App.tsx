@@ -103,8 +103,6 @@ export default function App() {
     }
   };
 
-  // iframe 加载处理，由于插件注入已经改为在主进程进行(main.ts的did-frame-finish-load)，
-  // 这里不需要再手动通过 postMessage 或直接操作 DOM 去注入代码。
   const handleIframeLoad = async (appId: string) => {
     console.log(`Iframe loaded for ${appId}`);
   };
