@@ -11,7 +11,6 @@ if (window.location.protocol === 'miniapp:') {
 } else {
   // --------- Expose some API to the Renderer process ---------
   contextBridge.exposeInMainWorld('ipcRenderer', {
-    invoke: (channel: string, ...args: any[]) => ipcRenderer.invoke(channel, ...args),
     on(...args: Parameters<typeof ipcRenderer.on>) {
       const [channel, listener] = args
       return ipcRenderer.on(channel, (event, ...args) => listener(event, ...args))

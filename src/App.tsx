@@ -282,21 +282,24 @@ export default function App() {
               <span className="text-xs truncate flex-1">Welcome</span>
             </div>
             
-            {openTabs.map(app => (
-              <div 
-                key={`tab-${app.id}`}
+            {openTabs.map(tab => (
+              <div
+                key={`tab-${tab.tabId}`}
                 className={cn(
                   "flex items-center px-3 border-r border-[#1e1e1e] cursor-pointer min-w-[120px] max-w-[200px]",
-                  activeTab === app.id ? "bg-[#1e1e1e] text-white" : "bg-[#2d2d2d] text-[#969696]"
+                  activeTab === tab.tabId ? "bg-[#1e1e1e] text-white" : "bg-[#2d2d2d] text-[#969696]"
                 )}
-                onClick={() => setActiveTab(app.id)}
+                onClick={() => setActiveTab(tab.tabId)}
               >
-                <span className="text-xs truncate flex-1">{app.name}</span>
-                <X 
-                  className="w-3 h-3 ml-2 hover:bg-[#454545] rounded" 
+                <div className="w-4 h-4 mr-2 flex items-center justify-center">
+                  <Play className="w-3 h-3 text-[#007acc]" />
+                </div>
+                <span className="text-xs truncate flex-1">{tab.title || tab.app.name}</span>
+                <X
+                  className="w-3 h-3 ml-2 hover:bg-[#454545] rounded"
                   onClick={(e) => {
                     e.stopPropagation();
-                    closeTab(app.id);
+                    closeTab(tab.tabId);
                   }}
                 />
               </div>
@@ -331,18 +334,24 @@ export default function App() {
             </div>
 
             {/* Render all open tabs, hidden if not active */}
-            {openTabs.map(app => {
-              const srcUrl = `miniapp://${app.id}/${app.entry.replace(/^\/+/, '')}`;
+            {openTabs.map(tab => {
+              const urlObj = new URL(`miniapp://${tab.app.id}/${tab.app.entry.replace(/^\/+/, '')}`);
+              urlObj.searchParams.set('tabId', tab.tabId);
+              if (tab.payload) {
+                urlObj.searchParams.set('payload', encodeURIComponent(JSON.stringify(tab.payload)));
+              }
+              const srcUrl = urlObj.toString();
+
               return (
-                <div 
-                  key={app.id} 
-                  className={cn("h-full w-full bg-white relative", activeTab === app.id ? 'block' : 'hidden')}
+                <div
+                  key={tab.tabId}
+                  className={cn("h-full w-full bg-white relative", activeTab === tab.tabId ? 'block' : 'hidden')}
                 >
-                  <iframe 
-                    ref={el => iframeRefs.current[app.id] = el}
+                  <iframe
+                    ref={el => iframeRefs.current[tab.tabId] = el}
                     src={srcUrl}
-                    title={app.name}
-                    onLoad={() => handleIframeLoad(app.id)}
+                    title={tab.title || tab.app.name}
+                    onLoad={() => handleIframeLoad(tab.tabId)}
                     className="w-full h-full border-none absolute inset-0"
                     sandbox="allow-scripts allow-forms allow-same-origin allow-popups allow-modals"
                   />
