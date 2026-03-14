@@ -1,0 +1,111 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Host API Demo App</title>
+  <style>
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
+      padding: 20px;
+      color: #333;
+      background-color: #fff;
+    }
+    h1 {
+      font-size: 24px;
+      margin-top: 0;
+    }
+    .card {
+      border: 1px solid #ddd;
+      border-radius: 6px;
+      padding: 16px;
+      margin-bottom: 16px;
+    }
+    button {
+      background: #007acc;
+      color: white;
+      border: none;
+      padding: 8px 16px;
+      border-radius: 4px;
+      cursor: pointer;
+      font-size: 14px;
+    }
+    button:hover {
+      background: #005a9e;
+    }
+    .result {
+      margin-top: 12px;
+      padding: 8px;
+      background: #f5f5f5;
+      border-radius: 4px;
+      font-family: monospace;
+      font-size: 12px;
+      white-space: pre-wrap;
+      word-wrap: break-word;
+    }
+  </style>
+</head>
+<body>
+  <h1>Host API Bridge Demo</h1>
+  <p>This mini-app uses <code>window.hostApi</code> provided by the Electron preload script, bypassing <code>postMessage</code> entirely.</p>
+
+  <div class="card">
+    <h3>System Notification</h3>
+    <button onclick="testNotification()">Show Native Notification</button>
+  </div>
+
+  <div class="card">
+    <h3>File Dialog</h3>
+    <button onclick="testFileDialog()">Open File Dialog</button>
+    <div id="fileResult" class="result">Waiting for action...</div>
+  </div>
+
+  <div class="card">
+    <h3>Native Theme Context</h3>
+    <button onclick="testTheme()">Get Host Theme</button>
+    <div id="themeResult" class="result">Waiting for action...</div>
+  </div>
+
+  <script>
+    // Ensure hostApi exists
+    if (!window.hostApi) {
+      document.body.innerHTML += '<p style="color: red; padding: 20px; border: 1px solid red;">ERROR: window.hostApi is not defined. Ensure nodeIntegrationInSubFrames is true and preload is injecting correctly.</p>';
+    }
+
+    async function testNotification() {
+      if (window.hostApi) {
+        await window.hostApi.showNotification('Hello from Mini App!', 'This is a native notification using IPC Bridge.');
+      } else {
+        alert('window.hostApi unavailable');
+      }
+    }
+
+    async function testFileDialog() {
+      if (window.hostApi) {
+        document.getElementById('fileResult').innerText = 'Opening dialog...';
+        const files = await window.hostApi.openFileDialog();
+        if (files) {
+          document.getElementById('fileResult').innerText = 'Selected:\n' + files.join('\n');
+        } else {
+          document.getElementById('fileResult').innerText = 'Dialog canceled.';
+        }
+      } else {
+        alert('window.hostApi unavailable');
+      }
+    }
+
+    async function testTheme() {
+      if (window.hostApi) {
+        const theme = await window.hostApi.getThemeColor();
+        document.getElementById('themeResult').innerText = 'Current Host Theme: ' + theme;
+        if (theme === 'dark') {
+          document.body.style.backgroundColor = '#1e1e1e';
+          document.body.style.color = '#cccccc';
+        }
+      } else {
+        alert('window.hostApi unavailable');
+      }
+    }
+  </script>
+</body>
+</html>

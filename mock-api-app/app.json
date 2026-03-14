@@ -1,0 +1,7 @@
+{
+  "id": "mock.api.app",
+  "name": "Host API Demo App",
+  "version": "1.0.0",
+  "entry": "index.html",
+  "icon": "icon.png"
+}

@@ -1,7 +1,16 @@
 import { ipcRenderer, contextBridge } from 'electron'
 
-// --------- Expose some API to the Renderer process ---------
-contextBridge.exposeInMainWorld('ipcRenderer', {
+// 区分是在主系统（host）中还是在 iframe 子应用中
+// 在 miniapp 协议下，我们只暴露受限的 Host API
+if (window.location.protocol === 'miniapp:') {
+  contextBridge.exposeInMainWorld('hostApi', {
+    showNotification: (title: string, body: string) => ipcRenderer.invoke('host:show-notification', title, body),
+    openFileDialog: () => ipcRenderer.invoke('host:open-file-dialog'),
+    getThemeColor: () => ipcRenderer.invoke('host:get-theme-color'),
+  });
+} else {
+  // --------- Expose some API to the Renderer process ---------
+  contextBridge.exposeInMainWorld('ipcRenderer', {
   on(...args: Parameters<typeof ipcRenderer.on>) {
     const [channel, listener] = args
     return ipcRenderer.on(channel, (event, ...args) => listener(event, ...args))
@@ -33,4 +42,5 @@ contextBridge.exposeInMainWorld('ipcRenderer', {
     uninstallPlugin: (pluginId: string) => ipcRenderer.invoke('plugin:uninstall', pluginId),
     getInjectionsForApp: (appId: string) => ipcRenderer.invoke('plugin:get-injections', appId),
   }
-})
+  });
+}

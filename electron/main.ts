@@ -1,4 +1,4 @@
-import { app, BrowserWindow, ipcMain, protocol, net, webFrameMain } from 'electron'
+import { app, BrowserWindow, ipcMain, protocol, net, webFrameMain, Notification, dialog } from 'electron'
 import { fileURLToPath, pathToFileURL } from 'node:url'
 import path from 'node:path'
 import { MiniAppService } from './services/miniAppService'
@@ -44,6 +44,7 @@ function createWindow() {
     icon: path.join(process.env.VITE_PUBLIC, 'electron-vite.svg'),
     webPreferences: {
       preload: path.join(__dirname, 'preload.mjs'),
+      nodeIntegrationInSubFrames: true // <--- Allows preload to run inside iframes
     },
   })
 
@@ -184,6 +185,29 @@ app.whenReady().then(() => {
   // 提供给渲染侧动态获取应当注入的脚本/CSS的接口
   ipcMain.handle('plugin:get-injections', (_, appId: string) => {
     return globalPluginService.getInjectionsForApp(appId);
+  });
+
+  // ========== Host API Handlers ==========
+  ipcMain.handle('host:show-notification', (_, title: string, body: string) => {
+    if (Notification.isSupported()) {
+      new Notification({ title, body }).show();
+      return true;
+    }
+    return false;
+  });
+
+  ipcMain.handle('host:open-file-dialog', async () => {
+    if (!win) return null;
+    const { canceled, filePaths } = await dialog.showOpenDialog(win, {
+      properties: ['openFile', 'multiSelections']
+    });
+    if (canceled) return null;
+    return filePaths;
+  });
+
+  ipcMain.handle('host:get-theme-color', () => {
+    // 简单模拟，返回当前写死的暗色主题
+    return 'dark';
   });
 
   createWindow();
