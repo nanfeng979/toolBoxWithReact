@@ -12,7 +12,7 @@ export default function App() {
   const { activeTab, setActiveTab, openTabs, openApp, closeTab, setCommandPaletteOpen, workspacePath, fileTree, setWorkspace, installedApps, setInstalledApps } = useAppStore();
   const [sidebarWidth] = useState(260);
   const [activeSidebarMode, setActiveSidebarMode] = useState<'apps' | 'plugins' | 'explorer'>('apps');
-
+  const [installedPlugins, setInstalledPlugins] = useState<PluginManifest[]>([]);
   
   const iframeRefs = useRef<{ [key: string]: HTMLIFrameElement | null }>({});
 

@@ -1,0 +1,7 @@
+{
+  "id": "laya-scene-viewer",
+  "name": "Laya 2.x Scene Viewer",
+  "version": "1.0.0",
+  "description": "Viewer for LayaAir 2.13 .scene files",
+  "entry": "index.html"
+}

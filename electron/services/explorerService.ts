@@ -52,21 +52,30 @@ export class ExplorerService {
           return new Response('No workspace open', { status: 400 });
         }
 
-        const rawPath = request.url.replace(/^workspace-file:\/\//, '');
-        // handle search params / query / hash if they exist
-        const relativeUrlPath = new URL(`http://dummy/${rawPath}`);
-        const cleanRelPath = decodeURIComponent(relativeUrlPath.pathname);
-        // remove leading slash
-        const relPath = cleanRelPath.startsWith('/') ? cleanRelPath.substring(1) : cleanRelPath;
-
-        const targetPath = path.join(this.currentWorkspacePath, relPath);
+        let rawPath = request.url.replace(/^workspace-file:\/\//i, '');
+        const decodedPath = decodeURIComponent(rawPath);
         
-        // Security Check: Absolute verification to block ../ traversal
+        let targetPath = decodedPath;
+        // Fix up http dummy parsing issues if there was any leading slash 
+        // e.g. workspace-file:///D:/folder/file.txt -> /D:/folder -> D:/folder
+        if (targetPath.startsWith('/') && targetPath[2] === ':') {
+          targetPath = targetPath.substring(1); 
+        }
+        
+        // Fix up native fetch swallowing the colon on Windows 
+        // e.g. workspace-file://c/Users -> targetPath starts with "c/Users"
+        if (/^[a-zA-Z]\//.test(targetPath)) {
+          targetPath = targetPath[0] + ':' + targetPath.substring(1);
+        }
+
         const resolvedTarget = path.resolve(targetPath);
         const resolvedWorkspace = path.resolve(this.currentWorkspacePath);
         
-        if (!resolvedTarget.startsWith(resolvedWorkspace)) {
-          return new Response('Access Denied: Path Travelsal', { status: 403 });
+        console.log('[workspace-file] mapped targetPath:', targetPath, ' -> resolvedTarget:', resolvedTarget, ' | resolvedWorkspace:', resolvedWorkspace);
+
+        // Case-insensitive check to handle Windows drive letter discrepancies (e.g. C: vs c:)
+        if (!resolvedTarget.toLowerCase().startsWith(resolvedWorkspace.toLowerCase())) {
+          return new Response('Access Denied: Path Travelsal ' + resolvedTarget, { status: 403 });
         }
 
         return net.fetch(pathToFileURL(resolvedTarget).toString());

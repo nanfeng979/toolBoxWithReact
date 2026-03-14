@@ -27,12 +27,22 @@
    - **基础交互**: 支持点击折叠/展开。
    - **目的**: 为后期“基于文件夹的小程序/插件开发测试”提供基础环境。
 
-4. **Phase 8: Custom Editor 体系与小程序多开 (Multi-Instance Mini Apps) 🏃(Next)**
+4. **Phase 8: Custom Editor 体系与小程序多开 (Multi-Instance Mini Apps) ✅**
    - **8.1 小程序多实例支持 (Multi-Instance) ✅**: 重构 Tab 系统（依靠唯一 `tabId`），同一个小程序可被实例化多次隔离运行。
    - **8.2 文件后缀拦截器体系 (File Extension Interceptor) ✅**: 允许将特定文件后缀（如 `.scene`）映射到对应的小程序（如 `laya-scene-viewer`）。未能匹配的默认降级为自带的原生 Monaco Editor (只读预览)。
-   - **8.3 沙箱工作区资源访问 (Workspace Access)**: 扩展 `hostApi` 甚至新增 `workspace-file://` 本地协议，允许受限沙箱读取或写入当前打开的物理工作区内的相关静态资源。
+   - **8.3 沙箱工作区资源访问 (Workspace Access) ✅**: 扩展 `hostApi` 甚至新增 `workspace-file://` 本地协议，允许受限沙箱读取或写入当前打开的物理工作区内的相关静态资源。
 
-~~**Phase 9: 动态 UI 侧边栏/状态栏注入**~~ *(延迟至未来考虑)*
+5. **Phase 8.4: 应用层实战 - Laya 2.x Scene Viewer (Mock App) ✅**
+   - 目标: 基于 Custom Editor 与 workspace 读取能力，实现针对 Laya 2.13 `.scene` 文件的渲染小程序。
+   - 实现: 摒弃了初版的 DOM 渲染，改为使用 `<canvas>` 直接解析 JSON 对象层级并调用 `CanvasRenderingContext2D` 执行重绘，符合游戏引擎逻辑层表现。
+   - 需求 1: 支持递归读取 `.scene` JSON，根据 `child` 等级生成树形组件结构。(已完成)
+   - 需求 2: 针对 `"type": "Label"` 节点的渲染，实现 `text`, `align`, `valign`, `color`, `fontSize` 指令到 Canvas 绘制的转换映射。(已完成)
+
+6. **Phase 8.5: Scene Viewer 进阶 (图片沙箱透传渲染)** *(Next)*
+   - 目标: 让 Canvas 能够结合 `1.png` 等工程外部图片。
+   - 实现思路: 拦截 `"Sprite"` 或 `"Image"` 组件。利用 `workspace-file://` 协议获取绝对图片 URL，通过 `new Image()` 的 onload 回调实现将跨沙盒的文件绘制回画布，真正打通游戏面板与本地工程的文件壁垒。
+
+7. **Phase 9: 动态 UI 侧边栏/状态栏注入** *(Pending)*
 
 ~~**未来考虑：应用市场与云端分发 (App/Plugin Store)**~~ *(延迟至后期迭代)*
    - 客户端内部实现一个类似 VS Code Extension 商店的面板。

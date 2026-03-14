@@ -1,0 +1,159 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>Laya Canvas Viewer</title>
+  <style>
+    body {
+      margin: 0;
+      padding: 0;
+      background-color: #1e1e1e;
+      color: #ccc;
+      font-family: monospace;
+      overflow: auto;
+      display: flex;
+      justify-content: center;
+      align-items: center;
+      min-height: 100vh;
+    }
+    canvas {
+      background-color: #000;
+      box-shadow: 0 0 10px rgba(0,0,0,0.5);
+    }
+    #error-box {
+      color: #ff5555;
+      padding: 20px;
+      display: none;
+      position: absolute;
+      top: 0; left: 0;
+      background: rgba(0,0,0,0.8);
+      width: 100%;
+    }
+  </style>
+</head>
+<body>
+  <div id="error-box"></div>
+  <canvas id="canvasViewport"></canvas>
+
+  <script>
+    async function loadScene() {
+      const urlParams = new URLSearchParams(window.location.search);
+      const rawPayload = urlParams.get('payload');
+      
+      const errorBox = document.getElementById('error-box');
+      const canvas = document.getElementById('canvasViewport');
+
+      if (!rawPayload) {
+        errorBox.style.display = 'block';
+        errorBox.textContent = 'No payload provided via ?payload=';
+        return;
+      }
+
+      let filePath = '';
+      try {
+        const payloadStr = decodeURIComponent(rawPayload);
+        const payloadObj = JSON.parse(payloadStr);
+        filePath = payloadObj.filePath;
+      } catch (err) {
+        errorBox.style.display = 'block';
+        errorBox.textContent = 'Invalid payload format: ' + err.message;
+        return;
+      }
+
+      if (!filePath) {
+        errorBox.style.display = 'block';
+        errorBox.textContent = 'No file path found in payload';
+        return;
+      }
+
+      try {
+        const normPath = filePath.replace(/\\/g, '/');
+        // Prepend an extra slash if it's a Windows drive letter e.g. D:/ -> /D:/
+        const cleanNormPath = normPath.match(/^[a-zA-Z]:\//) ? '/' + normPath : normPath;
+        const fileUrl = `workspace-file://${cleanNormPath}`;
+        console.log('Fetching scene at:', fileUrl);
+        const response = await fetch(fileUrl);
+        
+        if (!response.ok) {
+          throw new Error(`Failed to load file: ${response.statusText} (${fileUrl})`);
+        }
+
+        const sceneData = await response.json();
+        renderSceneOnCanvas(sceneData, canvas);
+      } catch (err) {
+        errorBox.style.display = 'block';
+        errorBox.textContent = err.toString();
+        console.error(err);
+      }
+    }
+
+    function renderSceneOnCanvas(sceneNode, canvas) {
+      const ctx = canvas.getContext('2d');
+      if (sceneNode.type === 'Scene') {
+        const p = sceneNode.props || {};
+        canvas.width = p.width || 800;
+        canvas.height = p.height || 600;
+        ctx.fillStyle = p.sceneColor || '#000000';
+        ctx.fillRect(0, 0, canvas.width, canvas.height);
+      }
+
+      ctx.save();
+      _renderNodeCanvas(sceneNode, ctx, 0, 0);
+      ctx.restore();
+    }
+
+    function _renderNodeCanvas(node, ctx, parentOffsetX, parentOffsetY) {
+      const p = node.props || {};
+      const x = parentOffsetX + (p.x || 0);
+      const y = parentOffsetY + (p.y || 0);
+      const width = p.width || 0;
+      const height = p.height || 0;
+
+      if (node.type === 'Label') {
+        let text = p.text || '';
+        text = text.replace(/\\n/g, '\n');
+        
+        const fontSize = p.fontSize || 20;
+        ctx.font = `${fontSize}px sans-serif`;
+        ctx.fillStyle = p.color || '#ffffff';
+        ctx.textBaseline = 'top';
+
+        // simple alignment
+        let alignOffset = 0;
+        if (p.align === 'center') {
+          ctx.textAlign = 'center';
+          alignOffset = width / 2;
+        } else if (p.align === 'right') {
+          ctx.textAlign = 'right';
+          alignOffset = width;
+        } else {
+          ctx.textAlign = 'left';
+        }
+
+        const lines = text.split('\n');
+        
+        let startY = y;
+        if (p.valign === 'middle') {
+           const totalH = lines.length * (fontSize * 1.2);
+           startY = y + (height - totalH) / 2;
+        } else if (p.valign === 'bottom') {
+           const totalH = lines.length * (fontSize * 1.2);
+           startY = y + height - totalH;
+        }
+
+        lines.forEach((line, index) => {
+          ctx.fillText(line, x + alignOffset, startY + (index * fontSize * 1.2));
+        });
+      }
+
+      if (node.child && Array.isArray(node.child)) {
+        for (const childNode of node.child) {
+          _renderNodeCanvas(childNode, ctx, x, y);
+        }
+      }
+    }
+
+    loadScene();
+  </script>
+</body>
+</html>
