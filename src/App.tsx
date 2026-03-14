@@ -4,9 +4,10 @@ import { Settings, FolderIcon, Puzzle, Search, ChevronDown, X, Play, Trash2 } fr
 import { cn } from './lib/utils';
 import { MiniAppManifest, PluginManifest } from './vite-env';
 import { useAppStore } from './stores/appStore';
+import { CommandPalette } from './components/CommandPalette';
 
 export default function App() {
-  const { activeTab, setActiveTab, openTabs, openApp, closeTab } = useAppStore();
+  const { activeTab, setActiveTab, openTabs, openApp, closeTab, setCommandPaletteOpen } = useAppStore();
   const [sidebarWidth] = useState(260);
   const [activeSidebarMode, setActiveSidebarMode] = useState<'apps' | 'plugins'>('apps');
   
@@ -125,7 +126,10 @@ export default function App() {
             <FolderIcon className="w-7 h-7" />
           </div>
           
-          <Search className="w-7 h-7 p-1 text-[#8e8e8e] hover:text-white cursor-pointer" />
+          <Search 
+            className="w-7 h-7 p-1 text-[#8e8e8e] hover:text-white cursor-pointer" 
+            onClick={() => setCommandPaletteOpen(true)}
+          />
           
           <div 
             className={cn("p-1 rounded cursor-pointer relative", activeSidebarMode === 'plugins' ? "text-white" : "text-[#8e8e8e] hover:text-white")}
@@ -320,6 +324,7 @@ export default function App() {
           <span className="hover:bg-[#1f8ad2] px-1 cursor-default">ToolsBox v0.1.0</span>
         </div>
       </div>
+      <CommandPalette apps={installedApps} />
     </div>
   );
 }

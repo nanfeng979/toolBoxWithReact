@@ -4,17 +4,21 @@ import { MiniAppManifest } from '../vite-env';
 interface AppStore {
   activeTab: string;
   openTabs: MiniAppManifest[];
+  isCommandPaletteOpen: boolean;
   
   setActiveTab: (id: string) => void;
   openApp: (app: MiniAppManifest) => void;
   closeTab: (id: string) => void;
+  setCommandPaletteOpen: (open: boolean) => void;
 }
 
 export const useAppStore = create<AppStore>((set) => ({
   activeTab: 'welcome',
   openTabs: [],
+  isCommandPaletteOpen: false,
   
   setActiveTab: (id) => set({ activeTab: id }),
+  setCommandPaletteOpen: (open) => set({ isCommandPaletteOpen: open }),
   
   openApp: (app) => set((state) => {
     // If not already open, add it
