@@ -10,7 +10,8 @@ export interface FileNode {
 
 export interface TabInstance {
   tabId: string;
-  app: MiniAppManifest;
+  type: 'miniapp' | 'editor';
+  app?: MiniAppManifest;
   title?: string;
   payload?: any;
 }
@@ -24,6 +25,7 @@ interface AppStore {
   
   setActiveTab: (tabId: string) => void;
   openApp: (app: MiniAppManifest, options?: { tabId?: string; title?: string; payload?: any }) => void;
+  openEditor: (filePath: string, fileName: string) => void;
   closeTab: (tabId: string) => void;
   setCommandPaletteOpen: (open: boolean) => void;
   setWorkspace: (path: string | null, tree: FileNode[]) => void;
@@ -47,11 +49,30 @@ export const useAppStore = create<AppStore>((set) => ({
     if (!exists) {
       const newTab: TabInstance = {
         tabId,
+        type: 'miniapp',
         app,
         title: options?.title || app.name,
         payload: options?.payload
       };
       return { 
+        openTabs: [...state.openTabs, newTab],
+        activeTab: tabId
+      };
+    }
+    return { activeTab: tabId };
+  }),
+
+  openEditor: (filePath, fileName) => set((state) => {
+    const tabId = filePath;
+    const exists = state.openTabs.find(t => t.tabId === tabId);
+    if (!exists) {
+      const newTab: TabInstance = {
+        tabId,
+        type: 'editor',
+        title: fileName,
+        payload: { filePath }
+      };
+      return {
         openTabs: [...state.openTabs, newTab],
         activeTab: tabId
       };

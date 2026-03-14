@@ -1,11 +1,12 @@
 // @ts-nocheck
 import { useState, useEffect, useRef } from 'react';
-import { Settings, FolderIcon, Puzzle, Search, ChevronDown, X, Play, Trash2, LayoutTemplate } from 'lucide-react';
+import { Settings, FolderIcon, Puzzle, Search, ChevronDown, X, Play, Trash2, LayoutTemplate, FileCode } from 'lucide-react';
 import { cn } from './lib/utils';
 import { MiniAppManifest, PluginManifest } from './vite-env';
 import { useAppStore } from './stores/appStore';
 import { CommandPalette } from './components/CommandPalette';
 import { FileExplorer } from './components/FileExplorer';
+import { NativeEditor } from './components/NativeEditor';
 
 export default function App() {
   const { activeTab, setActiveTab, openTabs, openApp, closeTab, setCommandPaletteOpen, workspacePath, fileTree, setWorkspace } = useAppStore();
@@ -286,22 +287,31 @@ export default function App() {
               <div
                 key={`tab-${tab.tabId}`}
                 className={cn(
-                  "flex items-center px-3 border-r border-[#1e1e1e] cursor-pointer min-w-[120px] max-w-[200px]",
+                  "flex items-center px-3 border-r border-[#1e1e1e] cursor-pointer min-w-[120px] max-w-[200px] group",
                   activeTab === tab.tabId ? "bg-[#1e1e1e] text-white" : "bg-[#2d2d2d] text-[#969696]"
                 )}
                 onClick={() => setActiveTab(tab.tabId)}
               >
                 <div className="w-4 h-4 mr-2 flex items-center justify-center">
-                  <Play className="w-3 h-3 text-[#007acc]" />
+                  {tab.type === 'editor' ? (
+                    <FileCode className="w-3 h-3 text-[#519aba]" />
+                  ) : (
+                    <Play className="w-3 h-3 text-[#007acc]" />
+                  )}
                 </div>
-                <span className="text-xs truncate flex-1">{tab.title || tab.app.name}</span>
-                <X
-                  className="w-3 h-3 ml-2 hover:bg-[#454545] rounded"
+                <span className="text-xs truncate flex-1">{tab.title || tab.app?.name}</span>
+                <div
+                  className={cn(
+                    "ml-2 p-0.5 rounded hover:bg-[#454545]",
+                    activeTab === tab.tabId ? "opacity-100" : "opacity-0 group-hover:opacity-100"
+                  )}
                   onClick={(e) => {
                     e.stopPropagation();
                     closeTab(tab.tabId);
                   }}
-                />
+                >
+                  <X className="w-3 h-3" />
+                </div>
               </div>
             ))}
           </div>
@@ -335,7 +345,21 @@ export default function App() {
 
             {/* Render all open tabs, hidden if not active */}
             {openTabs.map(tab => {
-              const urlObj = new URL(`miniapp://${tab.app.id}/${tab.app.entry.replace(/^\/+/, '')}`);
+              if (tab.type === 'editor') {
+                return (
+                  <div
+                    key={tab.tabId}
+                    className={cn("h-full w-full bg-[#1e1e1e] relative", activeTab === tab.tabId ? 'block' : 'hidden')}
+                  >
+                    <NativeEditor filePath={tab.payload?.filePath} />
+                  </div>
+                );
+              }
+
+              // Normal Mini App rendering
+              const appEntry = tab.app?.entry || '';
+              const appId = tab.app?.id || '';
+              const urlObj = new URL(`miniapp://${appId}/${appEntry.replace(/^\/+/, '')}`);
               urlObj.searchParams.set('tabId', tab.tabId);
               if (tab.payload) {
                 urlObj.searchParams.set('payload', encodeURIComponent(JSON.stringify(tab.payload)));
@@ -350,7 +374,7 @@ export default function App() {
                   <iframe
                     ref={el => iframeRefs.current[tab.tabId] = el}
                     src={srcUrl}
-                    title={tab.title || tab.app.name}
+                    title={tab.title || tab.app?.name}
                     onLoad={() => handleIframeLoad(tab.tabId)}
                     className="w-full h-full border-none absolute inset-0"
                     sandbox="allow-scripts allow-forms allow-same-origin allow-popups allow-modals"

@@ -28,6 +28,16 @@ export class ExplorerService {
       const tree = await this.readDirectory(rootPath);
       return { path: rootPath, tree };
     });
+
+    ipcMain.handle('explorer:read-file', async (_, filePath: string) => {
+      try {
+        const content = await fs.readFile(filePath, 'utf-8');
+        return content;
+      } catch (err) {
+        console.error(`Error reading file ${filePath}:`, err);
+        return null; // 或者抛出错误
+      }
+    });
   }
 
   private async readDirectory(dirPath: string): Promise<FileNode[]> {

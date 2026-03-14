@@ -2,6 +2,7 @@ import React, { useState } from 'react';
 import { ChevronRight, ChevronDown, File, Folder } from 'lucide-react';
 import { cn } from '../lib/utils';
 import { FileNode } from '../stores/appStore';
+import { useAppStore } from '../stores/appStore';
 
 interface FileTreeItemProps {
   node: FileNode;
@@ -10,10 +11,14 @@ interface FileTreeItemProps {
 
 const FileTreeItem: React.FC<FileTreeItemProps> = ({ node, level }) => {
   const [isOpen, setIsOpen] = useState(false);
+  const openEditor = useAppStore(state => state.openEditor);
 
   const handleClick = () => {
     if (node.isDirectory) {
       setIsOpen(!isOpen);
+    } else {
+      // It's a file, open it in the editor
+      openEditor(node.path, node.name);
     }
   };
 
