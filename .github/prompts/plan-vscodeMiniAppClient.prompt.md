@@ -52,12 +52,20 @@
    - **实现**: 在主进程 `MiniAppService` 中新增 React 构建流程。若 `app.json` 声明 `framework: "react"`，会自动使用 `esbuild` 将 `entry`（如 `src/main.tsx`）打包到小程序目录下的 `.toolsbox/react-runtime/`，再由 `miniapp://` 协议加载生成的 `index.html`。
    - **收益**: 保留现有协议安全模型与 iframe 隔离机制的同时，支持 React 生态（状态管理、组件拆分、Hooks）快速开发。
 
-9. **Phase 8.8: React 小程序开发体验 (DX) 优化** *(Next)*
-   - 提供 `mock-react-app` 示例模板（已新增）。
-   - 在导入阶段增加 React 入口校验（缺失入口、编译错误可视化反馈）。
-   - 规划增量重编译策略（按文件变更触发），减少每次刷新的全量打包成本。
+9. **Phase 8.8: Scene Viewer 添加层级管理器 (Hierarchy) ✅**
+   - **目标**: 清晰展示 `.scene` JSON 文件的树状嵌套结构。
+   - **实现**: 在左侧新增类似 VS Code 资源树的 Hierarchy 面板。递归遍历 scene JSON，节点命名依照 `props.var` > `props.name` > `type` 的回退策略。
+   - **交互**: 在层级面板中点击节点，会自动重新计算该节点在缩放和平移后的全局坐标与包围盒，并与中间画布 (Canvas) 的选中状态完全联动同步。
 
-10. **Phase 9: 动态 UI 侧边栏/状态栏注入** *(Pending)*
+10. **Phase 8.9: Scene Viewer 支持画布可视化拖拽编辑 🏃(Next)**
+    - **目标**: 让用户不仅能通过右侧属性面板 (Inspector) 修改 x/y，也能直接在视图区使用鼠标按住元素进行拖拽改变坐标。
+    - **机制**: 在 Canvas 监听到 `mousedown` 命中目标时，记录起始坐标并进入拖拽状态；`mousemove` 触发时实时修改节点的 `props.x` 和 `props.y`；并在 `mouseup` 结束并标记文件 dirty (`setDirty(true)`)。
+
+11. **Phase 8.10: 节点右键与基础层级操作** *(Pending)*
+    - 支持在层级树 (Hierarchy) 或者画布上选中节点后，右键弹出菜单。
+    - 提供基础节点操作：删除节点 (Delete)、克隆节点 (Duplicate)。
+
+12. **Phase 9: 动态 UI 侧边栏/状态栏注入** *(Pending)*
 
 ~~**未来考虑：应用市场与云端分发 (App/Plugin Store)**~~ *(延迟至后期迭代)*
    - 客户端内部实现一个类似 VS Code Extension 商店的面板。

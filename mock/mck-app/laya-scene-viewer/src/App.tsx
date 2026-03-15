@@ -1,6 +1,7 @@
 import React, { useEffect, useState, useRef } from 'react';
 import { CanvasViewport } from './components/CanvasViewport';
 import { Inspector } from './components/Inspector';
+import { Hierarchy } from './components/Hierarchy';
 import { preloadImages } from './utils/sceneUtils';
 import { SceneNode, HitResult } from './types';
 
@@ -115,6 +116,15 @@ export function App() {
         </div>
       )}
       
+      <div style={{
+        width: 250,
+        backgroundColor: '#252526',
+        borderRight: '1px solid #333',
+        overflowY: 'auto'
+      }}>
+        <Hierarchy sceneData={sceneData} selectedHit={selectedHit} onSelectNode={setSelectedHit} />
+      </div>
+
       <CanvasViewport 
         sceneData={sceneData} 
         selectedHit={selectedHit} 
