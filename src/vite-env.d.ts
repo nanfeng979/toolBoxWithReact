@@ -7,6 +7,12 @@ export interface MiniAppManifest {
   description?: string;
   icon?: string;
   entry: string;
+  framework?: 'html' | 'react';
+  react?: {
+    entry?: string;
+    mountId?: string;
+    title?: string;
+  };
 }
 
 export interface PluginManifest {

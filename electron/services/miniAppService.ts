@@ -1,6 +1,13 @@
 import { app, dialog } from 'electron';
 import fs from 'node:fs/promises';
 import path from 'node:path';
+import { build } from 'esbuild';
+
+interface ReactMiniAppConfig {
+  entry?: string;
+  mountId?: string;
+  title?: string;
+}
 
 export interface MiniAppManifest {
   id: string;
@@ -9,12 +16,17 @@ export interface MiniAppManifest {
   description?: string;
   icon?: string;
   entry: string;
+  framework?: 'html' | 'react';
+  react?: ReactMiniAppConfig;
 }
 
 export class MiniAppService {
   private baseDir: string;
+  private readonly reactBuildRelDir = '.toolsbox/react-runtime';
+  private readonly hostRootDir: string;
 
   constructor() {
+    this.hostRootDir = process.env.APP_ROOT || path.resolve(__dirname, '..');
     // 将小程序存储在应用的用户数据目录下
     this.baseDir = path.join(app.getPath('userData'), 'mini-apps');
     this.ensureBaseDir().then(() => this.copyBuiltinApps());
@@ -69,10 +81,8 @@ export class MiniAppService {
           
           try {
             const manifestData = await fs.readFile(manifestPath, 'utf-8');
-            const manifest: MiniAppManifest = JSON.parse(manifestData);
-            
-            // 补充 id 和路径校验
-            manifest.id = item.name;
+            const rawManifest: MiniAppManifest = JSON.parse(manifestData);
+            const manifest = await this.resolveManifest(appDir, item.name, rawManifest);
             apps.push(manifest);
           } catch (err) {
             console.error(`Failed to parse app.json for ${item.name}:`, err);
@@ -84,6 +94,70 @@ export class MiniAppService {
     }
     
     return apps;
+  }
+
+  private async resolveManifest(appDir: string, appId: string, manifest: MiniAppManifest): Promise<MiniAppManifest> {
+    const normalizedManifest: MiniAppManifest = {
+      ...manifest,
+      id: appId,
+      framework: manifest.framework || 'html'
+    };
+
+    if (normalizedManifest.framework === 'react') {
+      const runtimeEntry = await this.prepareReactRuntime(appDir, normalizedManifest);
+      normalizedManifest.entry = runtimeEntry;
+    }
+
+    return normalizedManifest;
+  }
+
+  private async prepareReactRuntime(appDir: string, manifest: MiniAppManifest): Promise<string> {
+    const entry = manifest.react?.entry || manifest.entry;
+    const entryPath = path.join(appDir, entry.replace(/^[/\\]+/, ''));
+    const outDir = path.join(appDir, this.reactBuildRelDir);
+    const outJsPath = path.join(outDir, 'bundle.js');
+    const outHtmlPath = path.join(outDir, 'index.html');
+    const hostNodeModules = path.join(this.hostRootDir, 'node_modules');
+
+    await fs.access(entryPath);
+    await fs.mkdir(outDir, { recursive: true });
+
+    await build({
+      absWorkingDir: this.hostRootDir,
+      nodePaths: [hostNodeModules],
+      entryPoints: [entryPath],
+      bundle: true,
+      platform: 'browser',
+      format: 'iife',
+      target: ['chrome120'],
+      jsx: 'automatic',
+      outfile: outJsPath,
+      sourcemap: 'inline',
+      define: {
+        'process.env.NODE_ENV': '"production"'
+      }
+    });
+
+    const mountId = manifest.react?.mountId || 'root';
+    const title = manifest.react?.title || manifest.name;
+    const htmlContent = [
+      '<!doctype html>',
+      '<html lang="en">',
+      '  <head>',
+      '    <meta charset="UTF-8" />',
+      '    <meta name="viewport" content="width=device-width, initial-scale=1.0" />',
+      `    <title>${title}</title>`,
+      '  </head>',
+      '  <body>',
+      `    <div id="${mountId}"></div>`,
+      '    <script src="./bundle.js"></script>',
+      '  </body>',
+      '</html>'
+    ].join('\n');
+
+    await fs.writeFile(outHtmlPath, htmlContent, 'utf-8');
+
+    return this.reactBuildRelDir.split(path.sep).join('/').concat('/index.html');
   }
 
   /**

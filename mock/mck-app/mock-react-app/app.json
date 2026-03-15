@@ -1,0 +1,12 @@
+{
+  "id": "mock-react-app",
+  "name": "React Mini App Demo",
+  "version": "1.0.0",
+  "description": "React-based mini app for ToolsBox runtime build test",
+  "framework": "react",
+  "entry": "src/main.tsx",
+  "react": {
+    "mountId": "root",
+    "title": "React Mini App Demo"
+  }
+}
