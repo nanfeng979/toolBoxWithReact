@@ -14,6 +14,7 @@ export interface TabInstance {
   app?: MiniAppManifest;
   title?: string;
   payload?: any;
+  isDirty?: boolean;
 }
 
 // 文件后缀映射注册表：key 为扩展名 (无点), value 为对应的小程序 appId
@@ -35,6 +36,7 @@ interface AppStore {
   openApp: (app: MiniAppManifest, options?: { tabId?: string; title?: string; payload?: any }) => void;
   openFile: (filePath: string, fileName: string) => void;
   closeTab: (tabId: string) => void;
+  setTabDirty: (tabId: string, dirty: boolean) => void;
   setCommandPaletteOpen: (open: boolean) => void;
   setWorkspace: (path: string | null, tree: FileNode[]) => void;
 }
@@ -52,6 +54,10 @@ export const useAppStore = create<AppStore>((set) => ({
   setCommandPaletteOpen: (open) => set({ isCommandPaletteOpen: open }),
   setWorkspace: (path, tree) => set({ workspacePath: path, fileTree: tree }),
   
+  setTabDirty: (tabId, dirty) => set((state) => ({
+    openTabs: state.openTabs.map(t => t.tabId === tabId ? { ...t, isDirty: dirty } : t)
+  })),
+
   openApp: (app, options) => set((state) => {
     const tabId = options?.tabId || app.id;
     const exists = state.openTabs.find(t => t.tabId === tabId);

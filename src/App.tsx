@@ -9,12 +9,43 @@ import { FileExplorer } from './components/FileExplorer';
 import { NativeEditor } from './components/NativeEditor';
 
 export default function App() {
-  const { activeTab, setActiveTab, openTabs, openApp, closeTab, setCommandPaletteOpen, workspacePath, fileTree, setWorkspace, installedApps, setInstalledApps } = useAppStore();
+  const { activeTab, setActiveTab, openTabs, openApp, closeTab, setTabDirty, setCommandPaletteOpen, workspacePath, fileTree, setWorkspace, installedApps, setInstalledApps } = useAppStore();
   const [sidebarWidth] = useState(260);
   const [activeSidebarMode, setActiveSidebarMode] = useState<'apps' | 'plugins' | 'explorer'>('apps');
   const [installedPlugins, setInstalledPlugins] = useState<PluginManifest[]>([]);
   
   const iframeRefs = useRef<{ [key: string]: HTMLIFrameElement | null }>({});
+
+  useEffect(() => {
+    const handleMessage = async (event: MessageEvent) => {
+      const { type, filePath, content, dirty, tabId: msgTabId } = event.data;
+      
+      // Determine tabId from message or event.source if available
+      let originTabId = msgTabId;
+      if (!originTabId && event.source) {
+        for (const [id, iframe] of Object.entries(iframeRefs.current)) {
+          if (iframe && iframe.contentWindow === event.source) {
+            originTabId = id;
+            break;
+          }
+        }
+      }
+
+      if (type === 'set-dirty' && originTabId) {
+        setTabDirty(originTabId, dirty);
+      } else if (type === 'save-file' && filePath && content) {
+        try {
+          await window.ipcRenderer.invoke('explorer:write-file', { filePath, content });
+          // Optional: Show a success toast or sync state
+        } catch (err) {
+          console.error('Save failed:', err);
+        }
+      }
+    };
+
+    window.addEventListener('message', handleMessage);
+    return () => window.removeEventListener('message', handleMessage);
+  }, []);
 
   const fetchApps = async () => {
     try {
@@ -300,15 +331,18 @@ export default function App() {
                 <span className="text-xs truncate flex-1">{tab.title || tab.app?.name}</span>
                 <div
                   className={cn(
-                    "ml-2 p-0.5 rounded hover:bg-[#454545]",
-                    activeTab === tab.tabId ? "opacity-100" : "opacity-0 group-hover:opacity-100"
+                    "ml-2 flex items-center justify-center rounded hover:bg-[#454545]",
+                    (activeTab === tab.tabId || tab.isDirty) ? "opacity-100" : "opacity-0 group-hover:opacity-100"
                   )}
                   onClick={(e) => {
                     e.stopPropagation();
                     closeTab(tab.tabId);
                   }}
                 >
-                  <X className="w-3 h-3" />
+                  {tab.isDirty ? (
+                    <div className="w-2 h-2 bg-white rounded-full group-hover:hidden" />
+                  ) : null}
+                  <X className={cn("w-3 h-3", tab.isDirty ? "hidden group-hover:block" : "block")} />
                 </div>
               </div>
             ))}

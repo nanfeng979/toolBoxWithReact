@@ -43,6 +43,16 @@ export class ExplorerService {
         return null; // 或者抛出错误
       }
     });
+
+    ipcMain.handle('explorer:write-file', async (_, { filePath, content }: { filePath: string, content: string }) => {
+      try {
+        await fs.writeFile(filePath, content, 'utf-8');
+        return { success: true };
+      } catch (err) {
+        console.error(`Error writing file ${filePath}:`, err);
+        return { success: false, message: (err as Error).message };
+      }
+    });
   }
 
   private setupProtocol() {
