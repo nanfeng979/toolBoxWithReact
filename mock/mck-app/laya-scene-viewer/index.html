@@ -1,0 +1,218 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>Laya Canvas Editor</title>
+  <style>
+    body { margin: 0; padding: 0; background-color: #1e1e1e; color: #ccc; font-family: monospace; overflow: hidden; width: 100vw; height: 100vh; display: flex; }
+    #canvas-container { flex: 1; position: relative; overflow: hidden; background-color: #1e1e1e; }
+    canvas { background-color: transparent; display: block; }
+    #inspector { width: 300px; background-color: #252526; border-left: 1px solid #333; overflow-y: auto; padding: 15px; box-sizing: border-box; }
+    #error-box { color: #ff5555; padding: 20px; display: none; position: absolute; top: 0; left: 0; background: rgba(0,0,0,0.8); width: 100%; z-index: 100; }
+    .prop-group { margin-top: 15px; }
+    .prop-title { color: #888; font-size: 11px; margin-bottom: 5px; text-transform: uppercase; font-weight: bold; }
+    .prop-row { display: flex; align-items: center; margin-bottom: 4px; }
+    .prop-label { width: 80px; font-size: 12px; color: #ccc; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    .prop-input { flex: 1; background: #3c3c3c; border: 1px solid #555; color: #fff; padding: 3px 5px; font-family: monospace; border-radius: 2px; }
+    .prop-input:focus { outline: none; border-color: #007acc; }
+  </style>
+</head>
+<body>
+  <div id="canvas-container">
+    <div id="error-box"></div>
+    <canvas id="canvasViewport"></canvas>
+  </div>
+  <div id="inspector">
+    <div style="color:#888; text-align:center; margin-top: 20px;">No node selected</div>
+  </div>
+
+  <script>
+    let sceneData = null; let imageCache = {}; let scale = 1.0; let offsetX = 0; let offsetY = 0; let isPanning = false; let lastMouseX = 0; let lastMouseY = 0; let scenePath = '';
+    let selectedHit = null; let isDirty = false; let originalFilePath = '';
+
+    const container = document.getElementById('canvas-container');
+    const canvas = document.getElementById('canvasViewport'); 
+    const ctx = canvas.getContext('2d');
+    const inspector = document.getElementById('inspector');
+
+    function setDirty(dirty) {
+        if (isDirty === dirty) return;
+        isDirty = dirty;
+        window.parent.postMessage({ type: 'set-dirty', dirty: isDirty }, '*');
+    }
+
+    function resizeCanvas() { 
+      canvas.width = container.clientWidth; 
+      canvas.height = container.clientHeight; 
+      render(); 
+    }
+    window.addEventListener('resize', resizeCanvas);
+
+    async function loadScene() {
+      const urlParams = new URLSearchParams(window.location.search);
+      const rawPayload = urlParams.get('payload');
+      const errorBox = document.getElementById('error-box');
+      if (!rawPayload) { errorBox.style.display = 'block'; errorBox.textContent = 'No payload provided'; return; }
+      try {
+        const payloadObj = JSON.parse(decodeURIComponent(rawPayload));
+        originalFilePath = payloadObj.filePath;
+        const normPath = originalFilePath.replace(/\\/g, '/');
+        scenePath = normPath.match(/^[a-zA-Z]:\//) ? '/' + normPath : normPath;
+        const response = await fetch('workspace-file://' + scenePath);
+        if (!response.ok) throw new Error('File load failed');
+        sceneData = await response.json();
+        if (sceneData.type === 'Scene') {
+            const p = sceneData.props || {};
+            offsetX = (container.clientWidth - (p.width || 640)) / 2;
+            offsetY = (container.clientHeight - (p.height || 1136)) / 2;
+        }
+        await preloadImages(sceneData); 
+        resizeCanvas();
+      } catch (err) { errorBox.style.display = 'block'; errorBox.textContent = err.toString(); }
+    }
+
+    async function resolveAssetUrl(skinName) {
+      const parts = scenePath.split('/'); parts.pop();
+      while (parts.length > 0) {
+        const testUrl = 'workspace-file://' + parts.join('/') + '/Laya/assets/' + skinName;
+        try { const res = await fetch(testUrl, { method: 'HEAD' }); if (res.ok) return testUrl; } catch (e) {}
+        parts.pop();
+      }
+      return 'workspace-file://' + scenePath.split('/').slice(0, -1).join('/') + '/' + skinName;
+    }
+
+    async function preloadImages(node) {
+      const p = node.props || {}; const skin = p.skin || p.texture;
+      if ((node.type === 'Image' || node.type === 'Sprite') && skin && !imageCache[skin]) {
+        const url = await resolveAssetUrl(skin);
+        await new Promise(r => { const img = new Image(); img.onload = () => { imageCache[skin] = img; r(); }; img.onerror = () => r(); img.src = url; });
+      }
+      if (node.child) { for (const c of node.child) await preloadImages(c); }
+    }
+
+    function hitTest(node, px, py, targetX, targetY) {
+        const p = node.props || {};
+        const x = px + (p.x || 0); const y = py + (p.y || 0);
+        const w = p.width || 0; const h = p.height || 0;
+        let hit = null;
+        if (node.child) {
+            for (let i = node.child.length - 1; i >= 0; i--) {
+                hit = hitTest(node.child[i], x, y, targetX, targetY);
+                if (hit) return hit;
+            }
+        }
+        let actualW = w; let actualH = h;
+        if ((node.type === 'Image' || node.type === 'Sprite') && (p.skin || p.texture)) {
+            const img = imageCache[p.skin || p.texture];
+            if(img) { actualW = w || img.width; actualH = h || img.height; }
+        } else if (node.type === 'Label') {
+            const fontSize = p.fontSize || 20;
+            const lines = (p.text || '').replace(/\\n/g, '\n').split('\n');
+            actualH = h || (lines.length * fontSize * 1.2);
+            actualW = w || Math.max(...lines.map(l => l.length * fontSize * 0.6));
+        } else if (node.type === 'Scene') { actualW = p.width || 800; actualH = p.height || 600; }
+        if (actualW === 0 && actualH === 0) return null;
+        if (targetX >= x && targetX <= x + actualW && targetY >= y && targetY <= y + actualH) {
+            return { node, x, y, w: actualW, h: actualH };
+        }
+        return null;
+    }
+
+    function updateInspector(hit) {
+        if (!hit) { inspector.innerHTML = '<div style="color:#888; text-align:center; margin-top: 20px;">No node selected</div>'; return; }
+        const node = hit.node; const p = node.props || {};
+        let html = `<div style="font-weight:bold; font-size: 16px; margin-bottom: 10px; color: #fff; padding-bottom: 5px; border-bottom: 1px solid #444;">${node.type}</div>`;
+        const addPropGroup = (title, keys) => {
+            let groupHtml = `<div class="prop-group"><div class="prop-title">${title}</div>`;
+            keys.forEach(k => {
+                let val = p[k]; if (val === undefined) val = '';
+                if (typeof val === 'string') val = val.replace(/\n/g, '\\n');
+                groupHtml += `<div class="prop-row"><div class="prop-label" title="${k}">${k}</div>
+                    <input class="prop-input" type="text" data-key="${k}" value="${val}" /></div>`;
+            });
+            groupHtml += '</div>'; return groupHtml;
+        };
+        html += addPropGroup('Common Props', ['name', 'x', 'y', 'width', 'height', 'alpha', 'rotation', 'visible']);
+        if (node.type === 'Label') html += addPropGroup('Label Props', ['text', 'fontSize', 'color', 'align', 'valign']);
+        else if (node.type === 'Image') html += addPropGroup('Image Props', ['skin']);
+        else if (node.type === 'Sprite') html += addPropGroup('Sprite Props', ['texture']);
+        else if (node.type === 'Scene') html += addPropGroup('Scene Props', ['sceneColor']);
+        inspector.innerHTML = html;
+
+        inspector.querySelectorAll('.prop-input').forEach(input => {
+            input.onchange = async (e) => {
+                const key = e.target.getAttribute('data-key');
+                let newVal = e.target.value;
+                if (!isNaN(newVal) && newVal.trim() !== '') newVal = Number(newVal);
+                else if (newVal === 'true') newVal = true;
+                else if (newVal === 'false') newVal = false;
+                
+                node.props = node.props || {};
+                node.props[key] = newVal;
+                setDirty(true);
+                
+                if (key === 'skin' || key === 'texture') await preloadImages(node);
+                render();
+            };
+        });
+    }
+
+    function render() {
+      if (!sceneData) return; 
+      ctx.clearRect(0, 0, canvas.width, canvas.height);
+      ctx.save(); ctx.translate(offsetX, offsetY); ctx.scale(scale, scale);
+      _drawNode(sceneData, 0, 0); 
+      if (selectedHit) { ctx.strokeStyle = '#ff3333'; ctx.lineWidth = 1.5/scale; ctx.strokeRect(selectedHit.x, selectedHit.y, selectedHit.w, selectedHit.h); }
+      ctx.restore();
+    }
+
+    function _drawNode(node, px, py) {
+      const p = node.props || {}; const x = px + (p.x || 0); const y = py + (p.y || 0); const w = p.width || 0; const h = p.height || 0;
+      if (node.type === 'Scene') { ctx.fillStyle = p.sceneColor || '#000000'; ctx.fillRect(x, y, p.width || 800, p.height || 600); }
+      else if (node.type === 'Label') {
+        const text = (p.text || '').replace(/\\n/g, '\n'); const fontSize = p.fontSize || 20;
+        ctx.font = fontSize + 'px sans-serif'; ctx.fillStyle = p.color || '#ffffff'; ctx.textBaseline = 'top';
+        let ax = 0; if (p.align === 'center') { ctx.textAlign = 'center'; ax = w / 2; } else if (p.align === 'right') { ctx.textAlign = 'right'; ax = w; } else ctx.textAlign = 'left';
+        const lines = text.split('\n'); let sy = y;
+        if (p.valign === 'middle') sy = y + (h - lines.length * fontSize * 1.2) / 2; else if (p.valign === 'bottom') sy = y + h - lines.length * fontSize * 1.2;
+        lines.forEach((l, i) => ctx.fillText(l, x + ax, sy + i * fontSize * 1.2));
+      } else if ((node.type === 'Image' || node.type === 'Sprite') && (p.skin || p.texture)) {
+        const img = imageCache[p.skin || p.texture]; if (img) ctx.drawImage(img, x, y, w || img.width, h || img.height);
+      }
+      if (node.child) { for (const c of node.child) _drawNode(c, x, y); }
+    }
+
+    canvas.addEventListener('wheel', (e) => {
+      e.preventDefault(); const zoomSpeed = 0.1; const delta = e.deltaY > 0 ? -zoomSpeed : zoomSpeed;
+      const oldScale = scale; scale = Math.max(0.1, Math.min(5, scale + delta));
+      const mouseX = e.clientX; const mouseY = e.clientY;
+      offsetX -= (mouseX - offsetX) * (scale / oldScale - 1); offsetY -= (mouseY - offsetY) * (scale / oldScale - 1);
+      render();
+    }, { passive: false });
+
+    canvas.addEventListener('mousedown', (e) => { 
+        if (e.button === 1) { isPanning = true; lastMouseX = e.clientX; lastMouseY = e.clientY; canvas.style.cursor = 'grabbing'; } 
+        else if (e.button === 0) {
+            const rect = canvas.getBoundingClientRect();
+            selectedHit = hitTest(sceneData, 0, 0, (e.clientX - rect.left - offsetX) / scale, (e.clientY - rect.top - offsetY) / scale);
+            updateInspector(selectedHit); render();
+        }
+    });
+    
+    window.addEventListener('mousemove', (e) => { if (isPanning) { offsetX += e.clientX - lastMouseX; offsetY += e.clientY - lastMouseY; lastMouseX = e.clientX; lastMouseY = e.clientY; render(); } });
+    window.addEventListener('mouseup', (e) => { if (e.button === 1) { isPanning = false; canvas.style.cursor = 'default'; } });
+
+    window.addEventListener('keydown', (e) => {
+        if ((e.ctrlKey || e.metaKey) && e.key === 's') {
+            e.preventDefault();
+            if (isDirty) {
+                window.parent.postMessage({ type: 'save-file', filePath: originalFilePath, content: JSON.stringify(sceneData, null, 4) }, '*');
+                setDirty(false);
+            }
+        }
+    });
+
+    loadScene();
+  </script>
+</body>
+</html>
