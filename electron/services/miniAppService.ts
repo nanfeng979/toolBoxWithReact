@@ -1,7 +1,9 @@
 import { app, dialog } from 'electron';
 import fs from 'node:fs/promises';
+import { existsSync } from 'node:fs';
 import path from 'node:path';
 import { build } from 'esbuild';
+import { ExplorerService } from './explorerService';
 
 interface ReactMiniAppConfig {
   entry?: string;
@@ -24,8 +26,10 @@ export class MiniAppService {
   private baseDir: string;
   private readonly reactBuildRelDir = '.toolsbox/react-runtime';
   private readonly hostRootDir: string;
+  private explorerService: ExplorerService;
 
-  constructor() {
+  constructor(explorerService: ExplorerService) {
+    this.explorerService = explorerService;
     this.hostRootDir = process.env.APP_ROOT || path.resolve(__dirname, '..');
     // 将小程序存储在应用的用户数据目录下
     this.baseDir = path.join(app.getPath('userData'), 'mini-apps');
@@ -141,9 +145,11 @@ export class MiniAppService {
    */
   async importApp(browserWindow: Electron.BrowserWindow): Promise<{ success: boolean; message: string }> {
     await this.ensureBaseDir();
+    const lastPath = await this.explorerService.getValidPath('lastMiniAppImportPath');
     const result = await dialog.showOpenDialog(browserWindow, {
       title: '选择小程序文件夹',
-      properties: ['openDirectory']
+      properties: ['openDirectory'],
+      defaultPath: lastPath
     });
 
     if (result.canceled || result.filePaths.length === 0) {
@@ -151,6 +157,7 @@ export class MiniAppService {
     }
 
     const sourceDir = result.filePaths[0];
+    await this.explorerService.savePath('lastMiniAppImportPath', sourceDir);
     const manifestPath = path.join(sourceDir, 'app.json');
 
     try {

@@ -1,5 +1,6 @@
-import { ipcMain, dialog, protocol, net } from 'electron';
+import { ipcMain, dialog, protocol, net, app } from 'electron';
 import fs from 'node:fs/promises';
+import { existsSync } from 'node:fs';
 import path from 'node:path';
 import { pathToFileURL } from 'node:url';
 
@@ -12,16 +13,61 @@ export interface FileNode {
 
 export class ExplorerService {
   private currentWorkspacePath: string | null = null;
+  private configPath: string;
 
   constructor() {
+    this.configPath = path.join(app.getPath('userData'), 'config.json');
     this.setupIpc();
     this.setupProtocol();
   }
 
+  public async getValidPath(key: string): Promise<string | undefined> {
+    try {
+      if (existsSync(this.configPath)) {
+        const data = await fs.readFile(this.configPath, 'utf-8');
+        const config = JSON.parse(data);
+        let targetPath = config[key];
+
+        if (targetPath) {
+          // 循环向上查找直到找到存在的路径
+          while (targetPath && !existsSync(targetPath)) {
+            const parent = path.dirname(targetPath);
+            if (parent === targetPath) {
+              targetPath = undefined;
+              break;
+            }
+            targetPath = parent;
+          }
+          return targetPath;
+        }
+      }
+    } catch (err) {
+      console.error('Failed to read config:', err);
+    }
+    return undefined;
+  }
+
+  public async savePath(key: string, value: string) {
+    try {
+      let config: any = {};
+      if (existsSync(this.configPath)) {
+        const data = await fs.readFile(this.configPath, 'utf-8');
+        config = JSON.parse(data);
+      }
+      config[key] = value;
+      await fs.mkdir(path.dirname(this.configPath), { recursive: true });
+      await fs.writeFile(this.configPath, JSON.stringify(config, null, 2), 'utf-8');
+    } catch (err) {
+      console.error('Failed to save config:', err);
+    }
+  }
+
   private setupIpc() {
     ipcMain.handle('explorer:open-folder', async () => {
+      const lastPath = await this.getValidPath('lastWorkspacePath');
       const result = await dialog.showOpenDialog({
-        properties: ['openDirectory']
+        properties: ['openDirectory'],
+        defaultPath: lastPath
       });
 
       if (result.canceled || result.filePaths.length === 0) {
@@ -30,6 +76,7 @@ export class ExplorerService {
 
       const rootPath = result.filePaths[0];
       this.currentWorkspacePath = rootPath;
+      await this.savePath('lastWorkspacePath', rootPath);
       const tree = await this.readDirectory(rootPath);
       return { path: rootPath, tree };
     });

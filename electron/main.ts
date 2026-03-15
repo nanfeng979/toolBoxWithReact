@@ -133,9 +133,9 @@ let globalMiniAppService: MiniAppService;
 let globalPluginService: PluginService;
 
 app.whenReady().then(() => {
-  globalMiniAppService = new MiniAppService();
-  globalPluginService = new PluginService();
-  new ExplorerService();
+  const explorerService = new ExplorerService();
+  globalMiniAppService = new MiniAppService(explorerService);
+  globalPluginService = new PluginService(explorerService);
 
   // 注册自定义协议处理，用于解析形如 miniapp://[app-id]/[path] 的资源请求
   protocol.handle('miniapp', (request) => {

@@ -1,6 +1,8 @@
 import { app, dialog } from 'electron';
 import fs from 'node:fs/promises';
+import { existsSync } from 'node:fs';
 import path from 'node:path';
+import { ExplorerService } from './explorerService';
 
 export interface PluginManifest {
   id: string;
@@ -18,8 +20,10 @@ export interface PluginManifest {
 
 export class PluginService {
   private baseDir: string;
+  private explorerService: ExplorerService;
 
-  constructor() {
+  constructor(explorerService: ExplorerService) {
+    this.explorerService = explorerService;
     this.baseDir = path.join(app.getPath('userData'), 'plugins');
     this.ensureBaseDir();
   }
@@ -118,9 +122,11 @@ export class PluginService {
    */
   async importPlugin(browserWindow: Electron.BrowserWindow): Promise<{ success: boolean; message: string }> {
     await this.ensureBaseDir();
+    const lastPath = await this.explorerService.getValidPath('lastPluginImportPath');
     const result = await dialog.showOpenDialog(browserWindow, {
       title: '选择插件文件夹',
-      properties: ['openDirectory']
+      properties: ['openDirectory'],
+      defaultPath: lastPath
     });
 
     if (result.canceled || result.filePaths.length === 0) {
@@ -128,6 +134,7 @@ export class PluginService {
     }
 
     const sourceDir = result.filePaths[0];
+    await this.explorerService.savePath('lastPluginImportPath', sourceDir);
     const manifestPath = path.join(sourceDir, 'plugin.json');
 
     try {
