@@ -29,31 +29,7 @@ export class MiniAppService {
     this.hostRootDir = process.env.APP_ROOT || path.resolve(__dirname, '..');
     // 将小程序存储在应用的用户数据目录下
     this.baseDir = path.join(app.getPath('userData'), 'mini-apps');
-    this.ensureBaseDir().then(() => this.copyBuiltinApps());
-  }
-
-  private async copyBuiltinApps() {
-    try {
-      // In dev, the root is the project root. In prod, it's the app root.
-      const rootPath = process.env.APP_ROOT || path.join(__dirname, '..');
-      const builtinDir = path.join(rootPath, 'builtin-apps');
-      
-      const exists = await fs.access(builtinDir).then(() => true).catch(() => false);
-      if (!exists) return;
-
-      const items = await fs.readdir(builtinDir, { withFileTypes: true });
-      for (const item of items) {
-        if (item.isDirectory()) {
-          const srcPath = path.join(builtinDir, item.name);
-          const destPath = path.join(this.baseDir, item.name);
-          
-          await fs.cp(srcPath, destPath, { recursive: true, force: true });
-          console.log(`Copied builtin app: ${item.name} to ${destPath}`);
-        }
-      }
-    } catch (e) {
-      console.error('Failed to copy builtin apps:', e);
-    }
+    this.ensureBaseDir();
   }
 
   private async ensureBaseDir() {
