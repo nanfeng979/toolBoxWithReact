@@ -1,12 +1,12 @@
 {
   "id": "image-replacer",
-  "name": "Image Replacer Tool",
+  "name": "图片替换工具",
   "version": "1.0.0",
-  "description": "Compare and replace images between two directories",
+  "description": "在两个目录之间对比并替换图片",
   "framework": "react",
   "entry": "src/main.tsx",
   "react": {
     "mountId": "root",
-    "title": "Image Replacer"
+    "title": "图片替换器"
   }
 }

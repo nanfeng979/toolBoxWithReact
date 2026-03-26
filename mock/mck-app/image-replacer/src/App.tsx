@@ -29,7 +29,7 @@ export function App() {
 
   // --- Handlers ---
   const handleLoadLeft = async () => {
-    if (!window.hostApi) return alert('Host API not available');
+    if (!window.hostApi) return alert('Host API 不可用');
     const dir = await window.hostApi.openDirectoryDialog();
     if (dir) {
       const files = await window.hostApi.readDirectoryFiles(dir);
@@ -48,7 +48,7 @@ export function App() {
   };
 
   const handleLoadRight = async () => {
-    if (!window.hostApi) return alert('Host API not available');
+    if (!window.hostApi) return alert('Host API 不可用');
     const dir = await window.hostApi.openDirectoryDialog();
     if (dir) {
       const files = await window.hostApi.readDirectoryFiles(dir);
@@ -92,7 +92,7 @@ export function App() {
 
   const handleReplace = async () => {
     if (!leftSelected || !rightSelected) {
-      alert('Please select an image on both sides first.');
+      alert('请先在两侧各选择一张图片。');
       return;
     }
     
@@ -100,9 +100,9 @@ export function App() {
     const sourceImg = rightFiles.find(f => f.id === rightSelected);
     
     if (!targetImg || !sourceImg) return;
-    if (!window.hostApi) return alert('Host API not available');
+    if (!window.hostApi) return alert('Host API 不可用');
 
-    const confirmed = window.confirm(`Replace left image:\n"${targetImg.name}"\nWith right image selected?`);
+    const confirmed = window.confirm(`是否替换左侧图片：\n"${targetImg.name}"\n使用右侧选中的图片覆盖？`);
     if (!confirmed) return;
 
     // Use host API to copy right file to left path
@@ -115,9 +115,9 @@ export function App() {
           ? { ...f, url: `${getAssetUrl(f.path)}?t=${ts}` }
           : f
       ));
-      window.hostApi.showNotification('Success', `Image replaced successfully.`);
+      window.hostApi.showNotification('成功', `图片替换成功。`);
     } else {
-      alert(`Replace failed: ${result.error}`);
+      alert(`替换失败: ${result.error}`);
     }
   };
 
@@ -126,12 +126,12 @@ export function App() {
       {/* Top Bar */}
       <div style={styles.topBar}>
         <div style={styles.buttonGroup}>
-          <button style={styles.button} onClick={handleLoadLeft}>Load Left Folder</button>
-          <button style={styles.button} onClick={handleLoadRight}>Load Right Folder</button>
+          <button style={styles.button} onClick={handleLoadLeft}>加载左侧文件夹</button>
+          <button style={styles.button} onClick={handleLoadRight}>加载右侧文件夹</button>
         </div>
         <div style={styles.buttonGroup}>
-          <button style={styles.buttonMatch} onClick={handleSortAndHighlight}>Sort & Highlight Matches</button>
-          <button style={styles.buttonReplace} onClick={handleReplace}>Execute Replace (Right ➜ Left)</button>
+          <button style={styles.buttonMatch} onClick={handleSortAndHighlight}>排序并高亮相同项</button>
+          <button style={styles.buttonReplace} onClick={handleReplace}>执行替换 (右 ➜ 左)</button>
         </div>
       </div>
 
@@ -139,7 +139,7 @@ export function App() {
       <div style={styles.splitView}>
         {/* Left View */}
         <div style={styles.viewPanel}>
-          <div style={styles.panelHeader}>Left Panel ({leftFiles.length} files)</div>
+          <div style={styles.panelHeader}>左侧面板 ({leftFiles.length} 个文件)</div>
           <div style={styles.grid}>
             {leftFiles.map(img => (
               <div 
@@ -155,13 +155,13 @@ export function App() {
                 </div>
               </div>
             ))}
-            {leftFiles.length === 0 && <div style={styles.emptyText}>Empty</div>}
+            {leftFiles.length === 0 && <div style={styles.emptyText}>空</div>}
           </div>
         </div>
 
         {/* Right View */}
         <div style={{ ...styles.viewPanel, borderLeft: '1px solid #334155' }}>
-          <div style={styles.panelHeader}>Right Panel ({rightFiles.length} files)</div>
+          <div style={styles.panelHeader}>右侧面板 ({rightFiles.length} 个文件)</div>
           <div style={styles.grid}>
             {rightFiles.map(img => (
               <div 
@@ -177,7 +177,7 @@ export function App() {
                 </div>
               </div>
             ))}
-            {rightFiles.length === 0 && <div style={styles.emptyText}>Empty</div>}
+            {rightFiles.length === 0 && <div style={styles.emptyText}>空</div>}
           </div>
         </div>
       </div>
