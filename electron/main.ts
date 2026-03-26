@@ -148,7 +148,7 @@ app.whenReady().then(() => {
   globalPluginService = new PluginService(explorerService);
 
   // 注册自定义协议处理，用于解析形如 miniapp://[app-id]/[path] 的资源请求
-  protocol.handle('miniapp', (request) => {
+  protocol.handle('miniapp', async (request) => {
     try {
       const url = new URL(request.url);
       const appId = url.hostname;
@@ -164,7 +164,19 @@ app.whenReady().then(() => {
       }
 
       // 将本地绝对路径转发给 net.fetch 读取
-      return net.fetch(pathToFileURL(targetPath).toString());
+      const response = await net.fetch(pathToFileURL(targetPath).toString());
+      
+      // 克隆响应以添加无缓存头 (避免小程序刷新时读取到旧的 bundle)
+      const headers = new Headers(response.headers);
+      headers.set('Cache-Control', 'no-cache, no-store, must-revalidate');
+      headers.set('Pragma', 'no-cache');
+      headers.set('Expires', '0');
+
+      return new Response(response.body, {
+        status: response.status,
+        statusText: response.statusText,
+        headers
+      });
     } catch (err) {
       console.error('Failed to handle miniapp protocol:', err);
       return new Response('File practically not found', { status: 404 });
@@ -205,6 +217,10 @@ app.whenReady().then(() => {
 
   ipcMain.handle('mini-app:uninstall', (_, appId: string) => {
     return globalMiniAppService.uninstallApp(appId);
+  });
+
+  ipcMain.handle('mini-app:refresh', (_, appId: string) => {
+    return globalMiniAppService.refreshApp(appId);
   });
 
   // Plugin IPC handlers

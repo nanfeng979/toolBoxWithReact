@@ -36,6 +36,7 @@ if (window.location.protocol === 'miniapp:') {
     getInstalledApps: () => ipcRenderer.invoke('mini-app:get-installed'),
     importApp: () => ipcRenderer.invoke('mini-app:import'),
     uninstallApp: (appId: string) => ipcRenderer.invoke('mini-app:uninstall', appId),
+    refreshApp: (appId: string) => ipcRenderer.invoke('mini-app:refresh', appId)
   },
 
   // Plugin APIs

@@ -1,6 +1,6 @@
 // @ts-nocheck
 import { useState, useEffect, useRef } from 'react';
-import { Settings, FolderIcon, Puzzle, Search, ChevronDown, X, Play, Trash2, LayoutTemplate, FileCode } from 'lucide-react';
+import { Settings, FolderIcon, Puzzle, Search, ChevronDown, X, Play, Trash2, LayoutTemplate, FileCode, RefreshCw } from 'lucide-react';
 import { cn } from './lib/utils';
 import { MiniAppManifest, PluginManifest } from './vite-env';
 import { useAppStore } from './stores/appStore';
@@ -110,6 +110,31 @@ export default function App() {
       }
     } catch (err) {
       alert('Uninstall failed');
+    }
+  };
+
+  const handleRefreshApp = async (appId: string) => {
+    try {
+      const result = await window.ipcRenderer.miniApp.refreshApp(appId);
+      if (result.success) {
+        await fetchApps();
+        // 如果当前有打开该小程序的标签页，也需要重新加载它
+        openTabs.forEach(tab => {
+          if (tab.app?.id === appId) {
+            const iframe = iframeRefs.current[tab.tabId];
+            if (iframe) {
+              const currentUrl = new URL(iframe.src);
+              currentUrl.searchParams.set('_t', Date.now().toString());
+              iframe.src = currentUrl.toString();
+            }
+          }
+        });
+      } else {
+        alert(result.message);
+      }
+    } catch (err) {
+      console.error(err);
+      alert('Refresh failed');
     }
   };
 
@@ -247,13 +272,24 @@ export default function App() {
                     >
                       <Play className="w-3 h-3 mr-2" />
                       <span className="text-sm flex-1 truncate">{app.name}</span>
-                      <Trash2 
-                        className="w-3 h-3 text-[#8e8e8e] hover:text-red-400 opacity-0 group-hover:opacity-100" 
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          handleUninstallApp(app.id);
-                        }}
-                      />
+                      <div className="flex items-center gap-2 opacity-0 group-hover:opacity-100">
+                        <RefreshCw
+                          className="w-3 h-3 text-[#8e8e8e] hover:text-white"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            handleRefreshApp(app.id);
+                          }}
+                          title="Refresh App"
+                        />
+                        <Trash2 
+                          className="w-3 h-3 text-[#8e8e8e] hover:text-red-400" 
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            handleUninstallApp(app.id);
+                          }}
+                          title="Uninstall App"
+                        />
+                      </div>
                     </div>
                   ))
                 )}

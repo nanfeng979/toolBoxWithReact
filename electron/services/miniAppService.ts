@@ -119,6 +119,7 @@ export class MiniAppService {
 
     const mountId = manifest.react?.mountId || 'root';
     const title = manifest.react?.title || manifest.name;
+    const versionHash = Date.now().toString();
     const htmlContent = [
       '<!doctype html>',
       '<html lang="en">',
@@ -129,7 +130,7 @@ export class MiniAppService {
       '  </head>',
       '  <body>',
       `    <div id="${mountId}"></div>`,
-      '    <script src="./bundle.js"></script>',
+      `    <script src="./bundle.js?v=${versionHash}"></script>`,
       '  </body>',
       '</html>'
     ].join('\n');
@@ -181,11 +182,49 @@ export class MiniAppService {
 
       // 进行目录复制 (Node.js 16.7.0+)
       await fs.cp(sourceDir, targetDir, { recursive: true });
+      await fs.writeFile(path.join(targetDir, '.source_path'), sourceDir, 'utf-8');
 
       return { success: true, message: `应用 ${manifest.name} 安装成功` };
 
     } catch (err) {
       return { success: false, message: `导入失败: ${err instanceof Error ? err.message : String(err)}` };
+    }
+  }
+
+  /**
+   * 刷新/重新导入小程序
+   */
+  async refreshApp(appId: string): Promise<{ success: boolean; message: string }> {
+    const targetDir = path.join(this.baseDir, appId);
+    const sourcePathFile = path.join(targetDir, '.source_path');
+    
+    let sourceDir: string;
+    try {
+      sourceDir = await fs.readFile(sourcePathFile, 'utf-8');
+    } catch (err) {
+      return { success: false, message: `找不到源文件夹路径记录，无法刷新` };
+    }
+
+    try {
+      // 检查源文件夹是否合法
+      const manifestPath = path.join(sourceDir, 'app.json');
+      await fs.access(manifestPath);
+      
+      const manifestData = await fs.readFile(manifestPath, 'utf-8');
+      const manifest = JSON.parse(manifestData);
+
+      if (manifest.id !== appId) {
+        return { success: false, message: `源文件夹的 app.id (${manifest.id}) 与当前应用ID (${appId}) 不一致` };
+      }
+
+      // 进行目录复制，覆盖现有文件
+      await fs.cp(sourceDir, targetDir, { recursive: true, force: true });
+      // 重新写入记录
+      await fs.writeFile(sourcePathFile, sourceDir, 'utf-8');
+
+      return { success: true, message: `应用 ${manifest.name} 刷新成功` };
+    } catch (err) {
+      return { success: false, message: `刷新失败: ${err instanceof Error ? err.message : String(err)}` };
     }
   }
 

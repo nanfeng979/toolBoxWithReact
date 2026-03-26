@@ -34,6 +34,7 @@ declare global {
         getInstalledApps: () => Promise<MiniAppManifest[]>;
         importApp: () => Promise<{ success: boolean; message: string }>;
         uninstallApp: (appId: string) => Promise<{ success: boolean; message: string }>;
+        refreshApp: (appId: string) => Promise<{ success: boolean; message: string }>;
       };
       plugins: {
         getInstalledPlugins: () => Promise<PluginManifest[]>;
