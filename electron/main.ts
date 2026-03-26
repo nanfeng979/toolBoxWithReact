@@ -1,6 +1,7 @@
 import { app, BrowserWindow, ipcMain, protocol, net, webFrameMain, Notification, dialog } from 'electron'
 import { fileURLToPath, pathToFileURL } from 'node:url'
 import path from 'node:path'
+import fs from 'node:fs/promises'
 import { MiniAppService } from './services/miniAppService'
 import { PluginService } from './services/pluginService'
 import { ExplorerService } from './services/explorerService'
@@ -20,6 +21,15 @@ protocol.registerSchemesAsPrivileged([
   },
   { 
     scheme: 'workspace-file', 
+    privileges: { 
+      standard: true, 
+      secure: true, 
+      supportFetchAPI: true, 
+      corsEnabled: true 
+    } 
+  },
+  { 
+    scheme: 'asset', 
     privileges: { 
       standard: true, 
       secure: true, 
@@ -161,6 +171,26 @@ app.whenReady().then(() => {
     }
   });
 
+  // 注册 asset 协议以读取任意本地文件 (用于工具类读取图片等)
+  protocol.handle('asset', (request) => {
+    try {
+      const url = new URL(request.url);
+      // 以 asset://host/ 为前缀的请求，pathname 包含了斜杠开头的文件路径
+      let rawPath = decodeURIComponent(url.pathname);
+      
+      let targetPath = rawPath;
+      // 修复 Windows 下的盘符解析，如 /D:/path -> D:/path
+      if (targetPath.startsWith('/') && targetPath[2] === ':') {
+        targetPath = targetPath.substring(1); 
+      }
+      
+      return net.fetch(pathToFileURL(path.resolve(targetPath)).toString());
+    } catch (err) {
+      console.error('Failed to handle asset protocol:', err);
+      return new Response('File not found', { status: 404 });
+    }
+  });
+
   // Register IPC handlers
   ipcMain.handle('mini-app:get-installed', () => {
     return globalMiniAppService.getInstalledApps();
@@ -205,6 +235,40 @@ app.whenReady().then(() => {
       return true;
     }
     return false;
+  });
+
+  ipcMain.handle('host:open-directory', async () => {
+    if (!win) return null;
+    const { canceled, filePaths } = await dialog.showOpenDialog(win, {
+      properties: ['openDirectory']
+    });
+    if (canceled || filePaths.length === 0) return null;
+    return filePaths[0];
+  });
+
+  ipcMain.handle('host:read-dir', async (_, dirPath: string) => {
+    try {
+      const entries = await fs.readdir(dirPath, { withFileTypes: true });
+      return entries
+        .filter(e => !e.isDirectory())
+        .map(e => ({
+          name: e.name,
+          path: path.join(dirPath, e.name)
+        }));
+    } catch (err) {
+      console.error('Failed to read dir:', err);
+      return [];
+    }
+  });
+
+  ipcMain.handle('host:copy-file', async (_, srcPath: string, destPath: string) => {
+    try {
+      await fs.copyFile(srcPath, destPath);
+      return { success: true };
+    } catch (err: any) {
+      console.error('Failed to copy file:', err);
+      return { success: false, error: err.message };
+    }
   });
 
   ipcMain.handle('host:open-file-dialog', async () => {

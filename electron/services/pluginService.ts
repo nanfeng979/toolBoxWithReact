@@ -1,6 +1,5 @@
 import { app, dialog } from 'electron';
 import fs from 'node:fs/promises';
-import { existsSync } from 'node:fs';
 import path from 'node:path';
 import { ExplorerService } from './explorerService';
 
