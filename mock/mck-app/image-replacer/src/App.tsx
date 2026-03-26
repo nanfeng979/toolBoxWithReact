@@ -1,4 +1,4 @@
-import React, { useState, useMemo } from 'react';
+import React, { useState } from 'react';
 
 // --- Types ---
 interface ImageItem {
@@ -27,42 +27,59 @@ export function App() {
   const [leftSelected, setLeftSelected] = useState<string | null>(null);
   const [rightSelected, setRightSelected] = useState<string | null>(null);
 
+  // --- Logic Helpers ---
+  const loadDirectory = async (dirPath: string, side: 'left' | 'right') => {
+    if (!window.hostApi) return;
+    const files = await window.hostApi.readDirectoryFiles(dirPath);
+    const images = files
+      .filter(f => isImage(f.name))
+      .map(f => ({
+        id: f.path,
+        name: f.name,
+        path: f.path,
+        url: getAssetUrl(f.path),
+        isCommon: false
+      }));
+    
+    if (side === 'left') {
+      setLeftFiles(images);
+      setLeftSelected(null);
+    } else {
+      setRightFiles(images);
+      setRightSelected(null);
+    }
+  };
+
   // --- Handlers ---
   const handleLoadLeft = async () => {
     if (!window.hostApi) return alert('Host API 不可用');
     const dir = await window.hostApi.openDirectoryDialog();
-    if (dir) {
-      const files = await window.hostApi.readDirectoryFiles(dir);
-      const images = files
-        .filter(f => isImage(f.name))
-        .map(f => ({
-          id: f.path,
-          name: f.name,
-          path: f.path,
-          url: getAssetUrl(f.path),
-          isCommon: false
-        }));
-      setLeftFiles(images);
-      setLeftSelected(null);
-    }
+    if (dir) loadDirectory(dir, 'left');
   };
 
   const handleLoadRight = async () => {
     if (!window.hostApi) return alert('Host API 不可用');
     const dir = await window.hostApi.openDirectoryDialog();
-    if (dir) {
-      const files = await window.hostApi.readDirectoryFiles(dir);
-      const images = files
-        .filter(f => isImage(f.name))
-        .map(f => ({
-          id: f.path,
-          name: f.name,
-          path: f.path,
-          url: getAssetUrl(f.path),
-          isCommon: false
-        }));
-      setRightFiles(images);
-      setRightSelected(null);
+    if (dir) loadDirectory(dir, 'right');
+  };
+
+  // --- Drag & Drop Handlers ---
+  const handleDragOver = (e: React.DragEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+  };
+
+  const handleDrop = async (e: React.DragEvent, side: 'left' | 'right') => {
+    e.preventDefault();
+    e.stopPropagation();
+    
+    const files = e.dataTransfer.files;
+    if (files && files.length > 0) {
+      // @ts-ignore - Electron extends File with 'path'
+      const dirPath = files[0].path;
+      if (dirPath) {
+        loadDirectory(dirPath, side);
+      }
     }
   };
 
@@ -71,23 +88,23 @@ export function App() {
     const rightNames = new Set(rightFiles.map(f => f.name));
     const commonNames = new Set([...leftNames].filter(x => rightNames.has(x)));
 
-    // Mark and Sort Left
-    const newLeft = [...leftFiles].map(f => ({ ...f, isCommon: commonNames.has(f.name) }));
-    newLeft.sort((a, b) => {
-      if (a.isCommon && !b.isCommon) return -1;
-      if (!a.isCommon && b.isCommon) return 1;
-      return a.name.localeCompare(b.name);
+    setLeftFiles(prev => {
+      const updated = prev.map(f => ({ ...f, isCommon: commonNames.has(f.name) }));
+      return updated.sort((a, b) => {
+        if (a.isCommon && !b.isCommon) return -1;
+        if (!a.isCommon && b.isCommon) return 1;
+        return a.name.localeCompare(b.name);
+      });
     });
-    setLeftFiles(newLeft);
 
-    // Mark and Sort Right
-    const newRight = [...rightFiles].map(f => ({ ...f, isCommon: commonNames.has(f.name) }));
-    newRight.sort((a, b) => {
-      if (a.isCommon && !b.isCommon) return -1;
-      if (!a.isCommon && b.isCommon) return 1;
-      return a.name.localeCompare(b.name);
+    setRightFiles(prev => {
+      const updated = prev.map(f => ({ ...f, isCommon: commonNames.has(f.name) }));
+      return updated.sort((a, b) => {
+        if (a.isCommon && !b.isCommon) return -1;
+        if (!a.isCommon && b.isCommon) return 1;
+        return a.name.localeCompare(b.name);
+      });
     });
-    setRightFiles(newRight);
   };
 
   const handleReplace = async () => {
@@ -138,8 +155,12 @@ export function App() {
       {/* Main Content */}
       <div style={styles.splitView}>
         {/* Left View */}
-        <div style={styles.viewPanel}>
-          <div style={styles.panelHeader}>左侧面板 ({leftFiles.length} 个文件)</div>
+        <div 
+          style={styles.viewPanel}
+          onDragOver={handleDragOver}
+          onDrop={(e) => handleDrop(e, 'left')}
+        >
+          <div style={styles.panelHeader}>左侧面板 ({leftFiles.length} 个文件) - 可拖拽文件夹</div>
           <div style={styles.grid}>
             {leftFiles.map(img => (
               <div 
@@ -150,18 +171,22 @@ export function App() {
                 <div style={styles.imageWrapper}>
                   <img src={img.url} alt={img.name} style={styles.img} />
                 </div>
-                <div style={{...styles.fileName, color: img.isCommon ? '#4ade80' : '#e2e8f0'}}>
+                <div style={{...styles.fileName, color: img.isCommon ? '#4ade80' : '#d4d4d4'}}>
                   {img.name}
                 </div>
               </div>
             ))}
-            {leftFiles.length === 0 && <div style={styles.emptyText}>空</div>}
+            {leftFiles.length === 0 && <div style={styles.emptyText}>拖拽文件夹至此</div>}
           </div>
         </div>
 
         {/* Right View */}
-        <div style={{ ...styles.viewPanel, borderLeft: '1px solid #334155' }}>
-          <div style={styles.panelHeader}>右侧面板 ({rightFiles.length} 个文件)</div>
+        <div 
+          style={{ ...styles.viewPanel, borderLeft: '1px solid #262626' }}
+          onDragOver={handleDragOver}
+          onDrop={(e) => handleDrop(e, 'right')}
+        >
+          <div style={styles.panelHeader}>右侧面板 ({rightFiles.length} 个文件) - 可拖拽文件夹</div>
           <div style={styles.grid}>
             {rightFiles.map(img => (
               <div 
@@ -172,12 +197,12 @@ export function App() {
                 <div style={styles.imageWrapper}>
                   <img src={img.url} alt={img.name} style={styles.img} />
                 </div>
-                <div style={{...styles.fileName, color: img.isCommon ? '#4ade80' : '#e2e8f0'}}>
+                <div style={{...styles.fileName, color: img.isCommon ? '#4ade80' : '#d4d4d4'}}>
                   {img.name}
                 </div>
               </div>
             ))}
-            {rightFiles.length === 0 && <div style={styles.emptyText}>空</div>}
+            {rightFiles.length === 0 && <div style={styles.emptyText}>拖拽文件夹至此</div>}
           </div>
         </div>
       </div>
@@ -192,8 +217,8 @@ const styles = {
     flexDirection: 'column',
     height: '100vh',
     width: '100vw',
-    backgroundColor: '#0f172a',
-    color: '#f8fafc',
+    backgroundColor: '#171717',
+    color: '#e5e5e5',
     fontFamily: 'system-ui, -apple-system, sans-serif'
   } as React.CSSProperties,
   topBar: {
@@ -201,8 +226,8 @@ const styles = {
     alignItems: 'center',
     justifyContent: 'space-between',
     padding: '12px 20px',
-    backgroundColor: '#1e293b',
-    borderBottom: '1px solid #334155',
+    backgroundColor: '#262626',
+    borderBottom: '1px solid #404040',
     flexShrink: 0
   } as React.CSSProperties,
   buttonGroup: {
@@ -211,34 +236,34 @@ const styles = {
   } as React.CSSProperties,
   button: {
     padding: '8px 16px',
-    backgroundColor: '#3b82f6',
-    color: 'white',
-    border: 'none',
+    backgroundColor: '#404040',
+    color: '#f5f5f5',
+    border: '1px solid #525252',
     borderRadius: '4px',
     cursor: 'pointer',
     fontWeight: 600,
-    fontSize: '14px',
+    fontSize: '13px',
     transition: 'background 0.2s'
   } as React.CSSProperties,
   buttonMatch: {
     padding: '8px 16px',
-    backgroundColor: '#10b981',
-    color: 'white',
-    border: 'none',
+    backgroundColor: '#262626',
+    color: '#4ade80',
+    border: '1px solid #4ade80',
     borderRadius: '4px',
     cursor: 'pointer',
     fontWeight: 600,
-    fontSize: '14px',
+    fontSize: '13px',
   } as React.CSSProperties,
   buttonReplace: {
     padding: '8px 16px',
-    backgroundColor: '#ef4444',
+    backgroundColor: '#dc2626',
     color: 'white',
     border: 'none',
     borderRadius: '4px',
     cursor: 'pointer',
     fontWeight: 600,
-    fontSize: '14px',
+    fontSize: '13px',
   } as React.CSSProperties,
   splitView: {
     display: 'flex',
@@ -254,18 +279,19 @@ const styles = {
   } as React.CSSProperties,
   panelHeader: {
     padding: '8px 16px',
-    backgroundColor: '#0f172a',
-    borderBottom: '1px solid #334155',
+    backgroundColor: '#262626',
+    borderBottom: '1px solid #404040',
     fontWeight: 600,
-    fontSize: '14px',
-    color: '#94a3b8'
+    fontSize: '12px',
+    color: '#a3a3a3',
+    textTransform: 'uppercase' as any
   } as React.CSSProperties,
   grid: {
     flex: 1,
     overflowY: 'auto',
     display: 'grid',
-    gridTemplateColumns: 'repeat(auto-fill, minmax(140px, 1fr))',
-    gap: '16px',
+    gridTemplateColumns: 'repeat(auto-fill, minmax(130px, 1fr))',
+    gap: '12px',
     padding: '16px',
     alignContent: 'start'
   } as React.CSSProperties,
@@ -273,34 +299,35 @@ const styles = {
     display: 'flex',
     flexDirection: 'column',
     alignItems: 'center',
-    padding: '8px',
-    borderRadius: '8px',
-    backgroundColor: '#1e293b',
-    border: '2px solid transparent',
+    padding: '10px',
+    borderRadius: '6px',
+    backgroundColor: '#262626',
+    border: '1px solid #404040',
     cursor: 'pointer',
-    transition: 'all 0.2s',
+    transition: 'all 0.15s',
   } as React.CSSProperties,
   cardSelected: {
     display: 'flex',
     flexDirection: 'column',
     alignItems: 'center',
-    padding: '8px',
-    borderRadius: '8px',
-    backgroundColor: '#1e293b',
-    border: '2px solid #3b82f6',
+    padding: '10px',
+    borderRadius: '6px',
+    backgroundColor: '#404040',
+    border: '1px solid #4ade80',
     cursor: 'pointer',
-    boxShadow: '0 0 10px rgba(59, 130, 246, 0.5)',
+    boxShadow: '0 0 8px rgba(74, 222, 128, 0.2)',
   } as React.CSSProperties,
   imageWrapper: {
-    width: '120px',
-    height: '120px',
+    width: '110px',
+    height: '110px',
     display: 'flex',
     alignItems: 'center',
     justifyContent: 'center',
-    backgroundColor: '#0f172a',
+    backgroundColor: '#171717',
     borderRadius: '4px',
     overflow: 'hidden',
-    marginBottom: '8px'
+    marginBottom: '8px',
+    border: '1px solid #404040'
   } as React.CSSProperties,
   img: {
     maxWidth: '100%',
@@ -308,20 +335,16 @@ const styles = {
     objectFit: 'contain'
   } as React.CSSProperties,
   fileName: {
-    fontSize: '12px',
+    fontSize: '11px',
     textAlign: 'center',
-    wordBreak: 'break-word',
-    display: '-webkit-box',
-    WebkitLineClamp: 2,
-    WebkitBoxOrient: 'vertical',
-    overflow: 'hidden',
-    textOverflow: 'ellipsis',
+    wordBreak: 'break-all',
+    color: '#d4d4d4',
     width: '100%'
   } as React.CSSProperties,
   emptyText: {
     gridColumn: '1 / -1',
     textAlign: 'center',
-    color: '#64748b',
-    marginTop: '40px'
+    color: '#525252',
+    marginTop: '60px'
   } as React.CSSProperties
 };
