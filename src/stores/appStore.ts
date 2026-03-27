@@ -19,7 +19,7 @@ export interface TabInstance {
 
 // 文件后缀映射注册表：key 为扩展名 (无点), value 为对应的小程序 appId
 export const extRegistry: Record<string, string> = {
-  'scene': 'laya-scene-viewer', // 假设：如果你装了 laya-scene-viewer，.scene 会用它打开
+  'scene': 'laya2-ide', // 假设：如果你装了 ，.scene 会用它打开
   'draw': 'excalidraw-app'      // 假设：.draw 用画板小程序打开
 };
 

@@ -1,0 +1,12 @@
+{
+  "id": "laya2-ide",
+  "name": "Laya2IDE",
+  "version": "0.1.0",
+  "description": "Laya 2 scene IDE (phase 1 foundation)",
+  "framework": "react",
+  "entry": "src/main.tsx",
+  "react": {
+    "mountId": "root",
+    "title": "Laya2IDE"
+  }
+}
