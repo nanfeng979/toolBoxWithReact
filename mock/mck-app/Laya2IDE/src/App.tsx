@@ -1,18 +1,26 @@
 import React, { useEffect, useRef } from 'react';
 import { SceneCanvas } from './components/Viewport/SceneCanvas';
 import { HierarchyPanel } from './components/Hierarchy/HierarchyPanel';
-import { InspectorPlaceholder } from './components/Inspector/InspectorPlaceholder';
+import { InspectorPanel } from './components/Inspector/InspectorPanel';
 import { preloadImages } from './utils/sceneUtils';
 import { useSceneStore } from './store/sceneStore';
 
 export function App() {
   const sceneData = useSceneStore((state) => state.sceneData);
   const errorMsg = useSceneStore((state) => state.errorMsg);
+  const isDirty = useSceneStore((state) => state.isDirty);
   const setSceneData = useSceneStore((state) => state.setSceneData);
   const setErrorMsg = useSceneStore((state) => state.setErrorMsg);
+  const setDirty = useSceneStore((state) => state.setDirty);
   const bumpVersion = useSceneStore((state) => state.bumpVersion);
 
+  const originalFilePath = useRef('');
   const scenePath = useRef('');
+
+  const getTabId = () => {
+    const urlParams = new URLSearchParams(window.location.search);
+    return urlParams.get('tabId');
+  };
 
   useEffect(() => {
     const loadScene = async () => {
@@ -25,8 +33,8 @@ export function App() {
 
       try {
         const payloadObj = JSON.parse(decodeURIComponent(rawPayload));
-        const originalFilePath = payloadObj.filePath;
-        const normPath = originalFilePath.replace(/\\/g, '/');
+        originalFilePath.current = payloadObj.filePath;
+        const normPath = originalFilePath.current.replace(/\\/g, '/');
         scenePath.current = normPath.match(/^[a-zA-Z]:\//) ? '/' + normPath : normPath;
 
         const response = await fetch('workspace-file://' + scenePath.current);
@@ -44,6 +52,34 @@ export function App() {
 
     loadScene();
   }, [bumpVersion, setErrorMsg, setSceneData]);
+
+  useEffect(() => {
+    window.parent.postMessage({ type: 'set-dirty', dirty: isDirty, tabId: getTabId() }, '*');
+  }, [isDirty]);
+
+  useEffect(() => {
+    const onKeyDown = (e: KeyboardEvent) => {
+      if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 's') {
+        e.preventDefault();
+        if (!isDirty || !sceneData || !originalFilePath.current) return;
+
+        window.parent.postMessage(
+          {
+            type: 'save-file',
+            filePath: originalFilePath.current,
+            content: JSON.stringify(sceneData, null, 4),
+            tabId: getTabId()
+          },
+          '*'
+        );
+
+        setDirty(false);
+      }
+    };
+
+    window.addEventListener('keydown', onKeyDown);
+    return () => window.removeEventListener('keydown', onKeyDown);
+  }, [isDirty, sceneData, setDirty]);
 
   return (
     <div
@@ -101,7 +137,7 @@ export function App() {
         <div style={{ padding: '10px 12px', fontSize: 12, color: '#c0c0c0', borderBottom: '1px solid #333' }}>
           INSPECTOR
         </div>
-        <InspectorPlaceholder />
+        <InspectorPanel />
       </aside>
     </div>
   );

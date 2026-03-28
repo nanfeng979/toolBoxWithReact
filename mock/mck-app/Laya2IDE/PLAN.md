@@ -76,8 +76,11 @@ mock/mck-app/Laya2IDE/
 > 当前结果：渲染职责已明确分层，后续可在不影响 Scene 渲染的情况下独立扩展 Gizmo（拖拽手柄、辅助线、锚点等）。
 
 ### Phase 3: 真正的交互能力 (Interaction & Drag)
-1. 在 Viewport 顶层附加独立事件监听，实现可靠的 **缩放平移 (Pan/Zoom)**。
+1. ✅ 在 Viewport 顶层附加独立事件监听，实现可靠的 **缩放平移 (Pan/Zoom)**（已采用 Pointer Capture 重构中键平移）。
 2. 引入 **编辑控制器 (Controller)**，在选中节点后，计算其局部坐标，允许在 Gizmo 层上长按并拖拽改变节点的 `x` 和 `y`，并实时同步给 `sceneStore`。
+3. ✅ 编辑器脏状态与保存链路已打通：
+  - 属性变更会设置 `isDirty = true`，并通过 `postMessage(type: 'set-dirty')` 回传宿主，标签页显示 `*`。
+  - 支持 `Ctrl+S / Cmd+S`，触发 `postMessage(type: 'save-file')` 将当前 scene 序列化后写回源 `.scene` 文件。
 
 ### Phase 4: 层级与属性面板的强化 (Hierarchy & Inspector) *(In Progress)*
 1. ✅ 左侧层级树已从占位替换为真实结构渲染：
@@ -86,14 +89,32 @@ mock/mck-app/Laya2IDE/
   - 支持折叠/展开子节点。
   - 点击层级节点可联动中间 Viewport 选中（通过反查节点包围盒，映射为 `selectedHit`）。
 2. ⏳ 待完成：右键菜单（`Add`, `Delete`, `Duplicate`）。
-3. ⏳ 待完成：右侧 Inspector 从占位替换为动态属性编辑表单。
+3. ✅ 右侧 Inspector 最小可用版已落地：
+  - 支持对选中节点的 `x / y / width / height` 四个数值字段进行编辑。
+  - 编辑后实时刷新中间 Viewport。
+  - 若选中节点为空，显示引导态文案。
+4. ✅ 属性更新链路已升级：Inspector 写入统一改为走 Store action `updateSelectedNodeProps`，为后续 Undo/Redo 接入做准备。
+5. ✅ Inspector 已扩展类型专属字段：
+  - `Label`: `text / color / fontSize`
+  - `Image/Sprite`: `skin / texture`
+6. ⏳ 待完成：Inspector 升级为更通用的 schema 动态表单（按节点类型配置渲染规则），减少硬编码字段。
 
 > 当前状态：左侧区域已具备实用形态，后续重点转向“结构编辑 + 属性编辑”双闭环。
 
 ### Phase 4.1 建议迭代顺序 (Next)
-1. 先做 Inspector 最小可用版：仅支持 `x/y/width/height` 数值编辑并实时刷新 Viewport。
-2. 再做 Hierarchy 右键菜单中的 `Delete`（最小破坏性），验证节点树与画布的一致更新。
+1. 先做 Hierarchy 右键菜单中的 `Delete`（最小破坏性），验证节点树与画布的一致更新。
+2. 再加入属性编辑后的资源刷新链路：当 `skin/texture` 变化时触发对应图片预加载，避免视图滞后。
 3. 最后加入 `Duplicate` 与 `Add`，并同步接入 Undo/Redo 的 Action 轨道。
+
+### 保存机制说明 (新增)
+1. 当前保存策略为“整文件重写”：将内存中的 scene JSON 全量序列化写回磁盘（格式化缩进 4 空格）。
+2. 该策略能稳定落地当前迭代目标；后续若要做真正“增量 patch 保存”，可在 `applySceneMutation` 层记录操作日志并输出差异补丁。
+
+### Phase 4.2 建议实现细节 (新增)
+1. Inspector 建议拆分为 “基础 Transform 组 + 类型专属组”，避免所有字段混在一个面板中。
+2. ✅ 属性更新已统一走 Store action（`updateSelectedNodeProps`），组件侧不再直接散落写入逻辑。
+3. 在 Inspector 输入中增加 `onBlur` 提交策略（可选），为未来 Undo/Redo 做“单次操作合并”预留空间。
+4. 建议新增 `applySceneMutation` 统一入口（批处理 + dirty 标记 + history push），避免后续增删节点时动作分散。
 
 ### Phase 5: 高级编辑器向 (Advanced IDE Features)
 1. 添加撤销与重做系统 (Undo/Redo Pipeline)。
