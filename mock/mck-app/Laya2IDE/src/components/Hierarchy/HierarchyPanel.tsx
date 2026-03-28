@@ -1,7 +1,7 @@
 import React, { useMemo, useState } from 'react';
 import { useSceneStore } from '../../store/sceneStore';
 import { SceneNode } from '../../types/scene';
-import { resolveHitByNode } from '../../core/Renderer';
+import { resolveHitByNode } from '../../core/Renderer.ts';
 
 interface TreeRow {
   path: string;

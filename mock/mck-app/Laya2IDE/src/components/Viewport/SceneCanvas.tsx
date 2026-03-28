@@ -1,7 +1,7 @@
 import React, { useEffect, useRef, useState } from 'react';
 import { useSceneStore } from '../../store/sceneStore';
 import { SceneNode } from '../../types/scene';
-import { GizmoRenderer, hitTestSceneNode, SceneRenderer } from '../../core/Renderer';
+import { GizmoRenderer, hitTestSceneNode, SceneRenderer } from '../../core/Renderer.ts';
 
 interface SceneCanvasProps {
   sceneData: SceneNode | null;

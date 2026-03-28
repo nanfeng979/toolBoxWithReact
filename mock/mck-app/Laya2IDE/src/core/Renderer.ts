@@ -7,6 +7,12 @@ export interface ViewTransform {
   offsetY: number;
 }
 
+function getSceneBgImage(node: SceneNode) {
+  const props = node.props || {};
+  const sceneBgKey = typeof props.sceneBg === 'string' ? props.sceneBg : '';
+  return sceneBgKey ? imageCache[sceneBgKey] : undefined;
+}
+
 export class SceneRenderer {
   private readonly canvas: HTMLCanvasElement;
   private readonly ctx: CanvasRenderingContext2D;
@@ -32,6 +38,7 @@ export class SceneRenderer {
     const height = this.canvas.height;
 
     ctx.clearRect(0, 0, width, height);
+    this.drawCanvasBase(width, height);
 
     this.drawEditorGrid(width, height);
 
@@ -44,11 +51,14 @@ export class SceneRenderer {
     ctx.restore();
   }
 
-  private drawEditorGrid(width: number, height: number) {
+  private drawCanvasBase(width: number, height: number) {
     const ctx = this.ctx;
     ctx.fillStyle = '#1f1f1f';
     ctx.fillRect(0, 0, width, height);
+  }
 
+  private drawEditorGrid(width: number, height: number) {
+    const ctx = this.ctx;
     ctx.strokeStyle = '#2a2a2a';
     ctx.lineWidth = 1;
     const gridSize = 24;
@@ -76,9 +86,18 @@ export class SceneRenderer {
     const w = p.width || 0;
     const h = p.height || 0;
 
-    if (node.type === 'Scene') {
+    if (node.type === 'Scene' || node.type === 'View' || node.type === 'Dialog') {
+      const drawW = p.width || (node.type === 'Scene' ? 800 : 0);
+      const drawH = p.height || (node.type === 'Scene' ? 600 : 0);
       ctx.fillStyle = p.sceneColor || '#000000';
-      ctx.fillRect(x, y, p.width || 800, p.height || 600);
+      ctx.fillRect(x, y, drawW, drawH);
+
+      const bgImage = getSceneBgImage(node);
+      if (bgImage) {
+        // sceneBg is a non-selectable reference layer that sits above the root node
+        // and aligns to the root node's top-left corner.
+        ctx.drawImage(bgImage, x, y);
+      }
     } else if (node.type === 'Label') {
       const text = (p.text || '').replace(/\\n/g, '\n');
       const fontSize = p.fontSize || 20;
@@ -195,9 +214,9 @@ export function hitTestSceneNode(
     const lines = (p.text || '').replace(/\\n/g, '\n').split('\n');
     actualH = h || lines.length * fontSize * 1.2;
     actualW = w || Math.max(...lines.map((line: string) => line.length * fontSize * 0.6));
-  } else if (node.type === 'Scene') {
-    actualW = p.width || 800;
-    actualH = p.height || 600;
+  } else if (node.type === 'Scene' || node.type === 'View' || node.type === 'Dialog') {
+    actualW = p.width || (node.type === 'Scene' ? 800 : 0);
+    actualH = p.height || (node.type === 'Scene' ? 600 : 0);
   }
 
   if (actualW === 0 && actualH === 0) return null;
@@ -235,9 +254,9 @@ export function resolveHitByNode(
     const lines = (p.text || '').replace(/\\n/g, '\n').split('\n');
     actualH = h || lines.length * fontSize * 1.2;
     actualW = w || Math.max(...lines.map((line: string) => line.length * fontSize * 0.6));
-  } else if (root.type === 'Scene') {
-    actualW = p.width || 800;
-    actualH = p.height || 600;
+  } else if (root.type === 'Scene' || root.type === 'View' || root.type === 'Dialog') {
+    actualW = p.width || (root.type === 'Scene' ? 800 : 0);
+    actualH = p.height || (root.type === 'Scene' ? 600 : 0);
   }
 
   if (root === targetNode) {
