@@ -15,14 +15,18 @@ export function SceneCanvas({ sceneData }: SceneCanvasProps) {
   const gizmoRendererRef = useRef<GizmoRenderer | null>(null);
   const selectedHit = useSceneStore((state) => state.selectedHit);
   const setSelectedHit = useSceneStore((state) => state.setSelectedHit);
+  const updateSelectedNodeProps = useSceneStore((state) => state.updateSelectedNodeProps);
   const version = useSceneStore((state) => state.version);
 
   const [scale, setScale] = useState(1.0);
   const [offset, setOffset] = useState({ x: 0, y: 0 });
   const [isPanning, setIsPanning] = useState(false);
+  const [isDragging, setIsDragging] = useState(false);
   const isPanningRef = useRef(false);
   const activePointerIdRef = useRef<number | null>(null);
   const lastPointerRef = useRef({ x: 0, y: 0 });
+  const interactionModeRef = useRef<'none' | 'pan' | 'drag'>('none');
+  const dragStartRef = useRef({ sceneX: 0, sceneY: 0, nodeX: 0, nodeY: 0 });
 
   useEffect(() => {
     if (sceneData && sceneData.type === 'Scene' && containerRef.current) {
@@ -92,7 +96,18 @@ export function SceneCanvas({ sceneData }: SceneCanvasProps) {
   const stopPanning = () => {
     isPanningRef.current = false;
     activePointerIdRef.current = null;
+    interactionModeRef.current = 'none';
     setIsPanning(false);
+    setIsDragging(false);
+  };
+
+  const getScenePointFromClient = (clientX: number, clientY: number) => {
+    const rect = gizmoCanvasRef.current?.getBoundingClientRect();
+    if (!rect) return null;
+    return {
+      x: (clientX - rect.left - offset.x) / scale,
+      y: (clientY - rect.top - offset.y) / scale
+    };
   };
 
   const handlePointerDown = (e: React.PointerEvent<HTMLCanvasElement>) => {
@@ -101,42 +116,86 @@ export function SceneCanvas({ sceneData }: SceneCanvasProps) {
       e.currentTarget.setPointerCapture(e.pointerId);
       isPanningRef.current = true;
       activePointerIdRef.current = e.pointerId;
+      interactionModeRef.current = 'pan';
       setIsPanning(true);
       lastPointerRef.current = { x: e.clientX, y: e.clientY };
     } else if (e.button === 0 && sceneData) {
-      const rect = gizmoCanvasRef.current?.getBoundingClientRect();
-      if (!rect) return;
-      const mouseX = (e.clientX - rect.left - offset.x) / scale;
-      const mouseY = (e.clientY - rect.top - offset.y) / scale;
-      const hit = hitTestSceneNode(sceneData, 0, 0, mouseX, mouseY);
+      const scenePoint = getScenePointFromClient(e.clientX, e.clientY);
+      if (!scenePoint) return;
+
+      const hit = hitTestSceneNode(sceneData, 0, 0, scenePoint.x, scenePoint.y);
       setSelectedHit(hit);
+
+      // Drag starts only when pressing down on an already-selected node.
+      if (hit && selectedHit && hit.node === selectedHit.node) {
+        e.preventDefault();
+        e.currentTarget.setPointerCapture(e.pointerId);
+        activePointerIdRef.current = e.pointerId;
+        interactionModeRef.current = 'drag';
+        setIsDragging(true);
+
+        const p = hit.node.props || {};
+        dragStartRef.current = {
+          sceneX: scenePoint.x,
+          sceneY: scenePoint.y,
+          nodeX: Number(p.x || 0),
+          nodeY: Number(p.y || 0)
+        };
+      }
     }
   };
 
   const handlePointerMove = (e: React.PointerEvent<HTMLCanvasElement>) => {
-    if (!isPanningRef.current) return;
     if (activePointerIdRef.current !== e.pointerId) return;
 
-    // Middle button bitmask: 4. If released during capture, stop panning.
-    if ((e.buttons & 4) === 0) {
-      stopPanning();
+    if (interactionModeRef.current === 'pan') {
+      // Middle button bitmask: 4. If released during capture, stop panning.
+      if ((e.buttons & 4) === 0) {
+        stopPanning();
+        return;
+      }
+
+      const deltaX = e.clientX - lastPointerRef.current.x;
+      const deltaY = e.clientY - lastPointerRef.current.y;
+      if (deltaX === 0 && deltaY === 0) return;
+
+      setOffset((prev) => ({
+        x: prev.x + deltaX,
+        y: prev.y + deltaY
+      }));
+      lastPointerRef.current = { x: e.clientX, y: e.clientY };
       return;
     }
 
-    const deltaX = e.clientX - lastPointerRef.current.x;
-    const deltaY = e.clientY - lastPointerRef.current.y;
-    if (deltaX === 0 && deltaY === 0) return;
+    if (interactionModeRef.current === 'drag') {
+      // Left button bitmask: 1. If released during capture, stop dragging.
+      if ((e.buttons & 1) === 0) {
+        stopPanning();
+        return;
+      }
 
-    setOffset((prev) => ({
-      x: prev.x + deltaX,
-      y: prev.y + deltaY
-    }));
-    lastPointerRef.current = { x: e.clientX, y: e.clientY };
+      const scenePoint = getScenePointFromClient(e.clientX, e.clientY);
+      if (!scenePoint) return;
+
+      const deltaX = scenePoint.x - dragStartRef.current.sceneX;
+      const deltaY = scenePoint.y - dragStartRef.current.sceneY;
+
+      updateSelectedNodeProps({
+        x: Math.round(dragStartRef.current.nodeX + deltaX),
+        y: Math.round(dragStartRef.current.nodeY + deltaY)
+      });
+    }
   };
 
   const handlePointerUp = (e: React.PointerEvent<HTMLCanvasElement>) => {
     if (activePointerIdRef.current !== e.pointerId) return;
-    if (e.button === 1 || (e.buttons & 4) === 0) {
+
+    if (interactionModeRef.current === 'pan' && (e.button === 1 || (e.buttons & 4) === 0)) {
+      stopPanning();
+      return;
+    }
+
+    if (interactionModeRef.current === 'drag' && (e.button === 0 || (e.buttons & 1) === 0)) {
       stopPanning();
     }
   };
@@ -171,7 +230,7 @@ export function SceneCanvas({ sceneData }: SceneCanvasProps) {
           width: '100%',
           height: '100%',
           display: 'block',
-          cursor: isPanning ? 'grabbing' : 'default',
+          cursor: isPanning || isDragging ? 'grabbing' : 'default',
           position: 'absolute',
           left: 0,
           top: 0,

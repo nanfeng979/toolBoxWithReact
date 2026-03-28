@@ -77,7 +77,10 @@ mock/mck-app/Laya2IDE/
 
 ### Phase 3: 真正的交互能力 (Interaction & Drag)
 1. ✅ 在 Viewport 顶层附加独立事件监听，实现可靠的 **缩放平移 (Pan/Zoom)**（已采用 Pointer Capture 重构中键平移）。
-2. 引入 **编辑控制器 (Controller)**，在选中节点后，计算其局部坐标，允许在 Gizmo 层上长按并拖拽改变节点的 `x` 和 `y`，并实时同步给 `sceneStore`。
+2. ✅ 已支持 Gizmo 层拖拽节点坐标：
+  - 在中间视图先选中对象，再次按住左键拖动可修改该节点 `x/y`。
+  - 拖拽过程实时同步 `sceneStore`，视图与选中框同时刷新。
+  - 与中键平移解耦：采用 Pointer Capture + 交互模式状态机（`pan` / `drag`）。
 3. ✅ 编辑器脏状态与保存链路已打通：
   - 属性变更会设置 `isDirty = true`，并通过 `postMessage(type: 'set-dirty')` 回传宿主，标签页显示 `*`。
   - 支持 `Ctrl+S / Cmd+S`，触发 `postMessage(type: 'save-file')` 将当前 scene 序列化后写回源 `.scene` 文件。
@@ -105,6 +108,11 @@ mock/mck-app/Laya2IDE/
 1. 先做 Hierarchy 右键菜单中的 `Delete`（最小破坏性），验证节点树与画布的一致更新。
 2. 再加入属性编辑后的资源刷新链路：当 `skin/texture` 变化时触发对应图片预加载，避免视图滞后。
 3. 最后加入 `Duplicate` 与 `Add`，并同步接入 Undo/Redo 的 Action 轨道。
+
+### 交互优化建议 (新增)
+1. 拖拽建议加入“最小位移阈值”判断（如 2~4 px），避免轻微手抖触发误拖。
+2. 拖拽建议支持按住 `Shift` 进行轴向锁定（只移动 X 或 Y），提高精确摆放效率。
+3. 在拖拽结束时追加一次“单步历史记录 push”，便于后续 Undo/Redo 做到一步回退。
 
 ### 保存机制说明 (新增)
 1. 当前保存策略为“整文件重写”：将内存中的 scene JSON 全量序列化写回磁盘（格式化缩进 4 空格）。
