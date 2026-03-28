@@ -65,10 +65,15 @@ mock/mck-app/Laya2IDE/
 
 > 当前实现目标是“打通运行链路 + 验证中间渲染区”，先不进入真实 `.scene` 解析与属性编辑。
 
-### Phase 2: 视图与渲染器解耦 (Renderer Separation) *(Next)*
-1. 抛弃纯 React 里的 `useEffect` 直接写庞大的 Draw 逻辑。
-2. 将绘制逻辑抽离成一个纯粹的 `CanvasRenderer` 类。只要 Store 的状态更新，直接驱动 `Renderer.render()`。
-3. 保证 Scene 渲染与 Gizmo（选中框）在两个隔离的 Canvas（或逻辑层）上。
+### Phase 2: 视图与渲染器解耦 (Renderer Separation) ✅
+1. 已将绘制逻辑从 `SceneCanvas.tsx` 中抽离到独立类 `src/core/Renderer.ts`。
+2. 新增 `SceneRenderer`（负责场景与节点渲染）与 `GizmoRenderer`（负责选中框等覆盖层渲染）。
+3. `SceneCanvas` 已升级为双 Canvas 结构：
+  - 底层 `sceneCanvas`：渲染网格与场景内容。
+  - 顶层 `gizmoCanvas`：仅渲染选中框，并承载交互事件（点击选中、滚轮缩放、中键平移）。
+4. 命中测试逻辑已抽离为 `hitTestSceneNode`，避免组件继续膨胀。
+
+> 当前结果：渲染职责已明确分层，后续可在不影响 Scene 渲染的情况下独立扩展 Gizmo（拖拽手柄、辅助线、锚点等）。
 
 ### Phase 3: 真正的交互能力 (Interaction & Drag)
 1. 在 Viewport 顶层附加独立事件监听，实现可靠的 **缩放平移 (Pan/Zoom)**。
