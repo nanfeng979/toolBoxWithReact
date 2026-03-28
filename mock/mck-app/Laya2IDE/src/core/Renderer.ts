@@ -7,10 +7,48 @@ export interface ViewTransform {
   offsetY: number;
 }
 
+export interface PrivateRenderState {
+  nodeVisible: boolean;
+  nodeOpacity: number;
+  referenceVisible: boolean;
+  referenceOpacity: number;
+  affectChildren: boolean;
+}
+
+export interface ReferenceLayerOptions {
+  byPath?: Record<string, PrivateRenderState>;
+}
+
+const DEFAULT_PRIVATE_RENDER_STATE: PrivateRenderState = {
+  nodeVisible: true,
+  nodeOpacity: 1,
+  referenceVisible: true,
+  referenceOpacity: 1,
+  affectChildren: false
+};
+
+function isPrivateControlledNode(node: SceneNode) {
+  return node.type === 'Label' || node.type === 'Image' || node.type === 'Sprite';
+}
+
+function isReferenceControlledNode(node: SceneNode) {
+  return node.type === 'Scene' || node.type === 'View' || node.type === 'Dialog';
+}
+
 function getSceneBgImage(node: SceneNode) {
   const props = node.props || {};
   const sceneBgKey = typeof props.sceneBg === 'string' ? props.sceneBg : '';
   return sceneBgKey ? imageCache[sceneBgKey] : undefined;
+}
+
+function composePrivateRenderState(parentState: PrivateRenderState, localState: PrivateRenderState): PrivateRenderState {
+  return {
+    nodeVisible: parentState.nodeVisible && localState.nodeVisible,
+    nodeOpacity: parentState.nodeOpacity * localState.nodeOpacity,
+    referenceVisible: parentState.referenceVisible && localState.referenceVisible,
+    referenceOpacity: parentState.referenceOpacity * localState.referenceOpacity,
+    affectChildren: localState.affectChildren
+  };
 }
 
 export class SceneRenderer {
@@ -32,14 +70,13 @@ export class SceneRenderer {
     if (this.canvas.height !== height) this.canvas.height = height;
   }
 
-  render(sceneData: SceneNode | null, transform: ViewTransform) {
+  render(sceneData: SceneNode | null, transform: ViewTransform, referenceLayer?: ReferenceLayerOptions) {
     const ctx = this.ctx;
     const width = this.canvas.width;
     const height = this.canvas.height;
 
     ctx.clearRect(0, 0, width, height);
     this.drawCanvasBase(width, height);
-
     this.drawEditorGrid(width, height);
 
     if (!sceneData) return;
@@ -47,7 +84,7 @@ export class SceneRenderer {
     ctx.save();
     ctx.translate(transform.offsetX, transform.offsetY);
     ctx.scale(transform.scale, transform.scale);
-    this.drawNode(sceneData, 0, 0);
+    this.drawNode(sceneData, 0, 0, '0', referenceLayer, DEFAULT_PRIVATE_RENDER_STATE);
     ctx.restore();
   }
 
@@ -78,65 +115,85 @@ export class SceneRenderer {
     }
   }
 
-  private drawNode(node: SceneNode, px: number, py: number) {
+  private drawNode(
+    node: SceneNode,
+    px: number,
+    py: number,
+    path: string,
+    referenceLayer: ReferenceLayerOptions | undefined,
+    inheritedPrivateState: PrivateRenderState
+  ) {
     const ctx = this.ctx;
     const p = node.props || {};
     const x = px + (p.x || 0);
     const y = py + (p.y || 0);
     const w = p.width || 0;
     const h = p.height || 0;
+    const localPrivateState = referenceLayer?.byPath?.[path] ?? DEFAULT_PRIVATE_RENDER_STATE;
+    const effectivePrivateState = composePrivateRenderState(inheritedPrivateState, localPrivateState);
+    const childInheritedState = effectivePrivateState.affectChildren ? effectivePrivateState : DEFAULT_PRIVATE_RENDER_STATE;
 
-    if (node.type === 'Scene' || node.type === 'View' || node.type === 'Dialog') {
-      const drawW = p.width || (node.type === 'Scene' ? 800 : 0);
-      const drawH = p.height || (node.type === 'Scene' ? 600 : 0);
-      ctx.fillStyle = p.sceneColor || '#000000';
-      ctx.fillRect(x, y, drawW, drawH);
+    if (effectivePrivateState.nodeVisible) {
+      ctx.save();
+      ctx.globalAlpha *= Math.min(1, Math.max(0, effectivePrivateState.nodeOpacity));
 
+      if (node.type === 'Scene' || node.type === 'View' || node.type === 'Dialog') {
+        const drawW = p.width || (node.type === 'Scene' ? 800 : 0);
+        const drawH = p.height || (node.type === 'Scene' ? 600 : 0);
+        ctx.fillStyle = p.sceneColor || '#000000';
+        ctx.fillRect(x, y, drawW, drawH);
+      } else if (node.type === 'Label') {
+        const text = (p.text || '').replace(/\\n/g, '\n');
+        const fontSize = p.fontSize || 20;
+        ctx.font = `${fontSize}px sans-serif`;
+        ctx.fillStyle = p.color || '#ffffff';
+        ctx.textBaseline = 'top';
+
+        let alignOffsetX = 0;
+        if (p.align === 'center') {
+          ctx.textAlign = 'center';
+          alignOffsetX = w / 2;
+        } else if (p.align === 'right') {
+          ctx.textAlign = 'right';
+          alignOffsetX = w;
+        } else {
+          ctx.textAlign = 'left';
+        }
+
+        const lines = text.split('\n');
+        let startY = y;
+        if (p.valign === 'middle') startY = y + (h - lines.length * fontSize * 1.2) / 2;
+        else if (p.valign === 'bottom') startY = y + h - lines.length * fontSize * 1.2;
+
+        lines.forEach((line: string, index: number) => {
+          ctx.fillText(line, x + alignOffsetX, startY + index * fontSize * 1.2);
+        });
+      } else if ((node.type === 'Image' || node.type === 'Sprite') && (p.skin || p.texture)) {
+        const skin = p.skin || p.texture;
+        const img = imageCache[skin];
+        if (img) {
+          ctx.drawImage(img, x, y, w || img.width, h || img.height);
+        }
+      }
+
+      ctx.restore();
+    }
+
+    if (isReferenceControlledNode(node) && effectivePrivateState.referenceVisible) {
       const bgImage = getSceneBgImage(node);
       if (bgImage) {
-        // sceneBg is a non-selectable reference layer that sits above the root node
-        // and aligns to the root node's top-left corner.
+        ctx.save();
+        ctx.globalAlpha *= Math.min(1, Math.max(0, effectivePrivateState.referenceOpacity));
         ctx.drawImage(bgImage, x, y);
-      }
-    } else if (node.type === 'Label') {
-      const text = (p.text || '').replace(/\\n/g, '\n');
-      const fontSize = p.fontSize || 20;
-      ctx.font = fontSize + 'px sans-serif';
-      ctx.fillStyle = p.color || '#ffffff';
-      ctx.textBaseline = 'top';
-
-      let alignOffsetX = 0;
-      if (p.align === 'center') {
-        ctx.textAlign = 'center';
-        alignOffsetX = w / 2;
-      } else if (p.align === 'right') {
-        ctx.textAlign = 'right';
-        alignOffsetX = w;
-      } else {
-        ctx.textAlign = 'left';
-      }
-
-      const lines = text.split('\n');
-      let startY = y;
-      if (p.valign === 'middle') startY = y + (h - lines.length * fontSize * 1.2) / 2;
-      else if (p.valign === 'bottom') startY = y + h - lines.length * fontSize * 1.2;
-
-      lines.forEach((line: string, i: number) => {
-        ctx.fillText(line, x + alignOffsetX, startY + i * fontSize * 1.2);
-      });
-    } else if ((node.type === 'Image' || node.type === 'Sprite') && (p.skin || p.texture)) {
-      const skin = p.skin || p.texture;
-      const img = imageCache[skin];
-      if (img) {
-        ctx.drawImage(img, x, y, w || img.width, h || img.height);
+        ctx.restore();
       }
     }
 
     if (!node.child) return;
 
-    for (const child of node.child) {
-      this.drawNode(child, x, y);
-    }
+    node.child.forEach((child, index) => {
+      this.drawNode(child, x, y, `${path}.${index}`, referenceLayer, childInheritedState);
+    });
   }
 }
 
@@ -185,20 +242,40 @@ export function hitTestSceneNode(
   px: number,
   py: number,
   targetX: number,
-  targetY: number
+  targetY: number,
+  privateByPath?: Record<string, PrivateRenderState>,
+  path: string = '0'
+): HitResult | null {
+  return hitTestSceneNodeInternal(node, px, py, targetX, targetY, privateByPath, path, DEFAULT_PRIVATE_RENDER_STATE);
+}
+
+function hitTestSceneNodeInternal(
+  node: SceneNode,
+  px: number,
+  py: number,
+  targetX: number,
+  targetY: number,
+  privateByPath: Record<string, PrivateRenderState> | undefined,
+  path: string,
+  inheritedPrivateState: PrivateRenderState
 ): HitResult | null {
   const p = node.props || {};
   const x = px + (p.x || 0);
   const y = py + (p.y || 0);
   const w = p.width || 0;
   const h = p.height || 0;
+  const localPrivateState = privateByPath?.[path] ?? DEFAULT_PRIVATE_RENDER_STATE;
+  const effectivePrivateState = composePrivateRenderState(inheritedPrivateState, localPrivateState);
+  const childInheritedState = effectivePrivateState.affectChildren ? effectivePrivateState : DEFAULT_PRIVATE_RENDER_STATE;
 
   if (node.child) {
     for (let i = node.child.length - 1; i >= 0; i -= 1) {
-      const hit = hitTestSceneNode(node.child[i], x, y, targetX, targetY);
+      const hit = hitTestSceneNodeInternal(node.child[i], x, y, targetX, targetY, privateByPath, `${path}.${i}`, childInheritedState);
       if (hit) return hit;
     }
   }
+
+  if (!effectivePrivateState.nodeVisible) return null;
 
   let actualW = w;
   let actualH = h;

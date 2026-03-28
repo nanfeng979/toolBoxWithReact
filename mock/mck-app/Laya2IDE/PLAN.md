@@ -113,6 +113,11 @@ mock/mck-app/Laya2IDE/
   - `Label`: `text / color / fontSize`
   - `Image/Sprite`: `skin / texture`
 6. ⏳ 待完成：Inspector 升级为更通用的 schema 动态表单（按节点类型配置渲染规则），减少硬编码字段。
+7. ✅ 已完成“按节点粒度”的私有属性管理（持久化到 appdata）：
+  - 每次加载 scene 会遍历节点生成私有状态项：`id + path`，并在 Inspector 底部展示当前选中节点的私有配置。
+  - 当前支持私有字段：`Reference Visible`（开关）与 `Opacity`（透明度），按“选中节点”独立编辑。
+  - 私有属性不写入 `.scene`，而是按 `appId + sceneFilePath` 作为 key 存储到 `app.getPath('userData')/miniapp-private/`。
+  - 重新打开同一 scene 会自动从 appdata 回填；若历史 path 与当前节点路径不匹配，则该节点私有状态自动回退默认值并分配新 id。
 
 > 当前状态：左侧区域已具备实用形态，后续重点转向“结构编辑 + 属性编辑”双闭环。
 
@@ -146,6 +151,8 @@ mock/mck-app/Laya2IDE/
 8. 建议后续在 UI 底部状态栏增加 `History: cursor/total` 调试信息，便于验证复杂编辑链路。
 9. 建议增加背景图加载失败可视化提示（例如状态栏 warning），便于快速定位 `sceneBg` 路径问题。
 10. 如果后续需要背景图编辑，建议单独做“背景资源面板”，不要复用普通节点 Inspector 字段。
+11. 建议为私有属性增加“重置默认值”按钮（例如恢复 `visible=true`, `opacity=1`），便于快速回到标准对照模式。
+12. 建议在私有属性存储中加入 `version` 字段，便于后续兼容升级（字段迁移）。
 
 ### Phase 5: 高级编辑器向 (Advanced IDE Features)
 1. 添加撤销与重做系统 (Undo/Redo Pipeline)。

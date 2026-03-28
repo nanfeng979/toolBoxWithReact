@@ -1,7 +1,7 @@
-import React, { useEffect, useRef, useState } from 'react';
-import { useSceneStore } from '../../store/sceneStore';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
+import { useSceneStore } from '../../store/sceneStore.ts';
 import { SceneNode } from '../../types/scene';
-import { GizmoRenderer, hitTestSceneNode, SceneRenderer } from '../../core/Renderer.ts';
+import { GizmoRenderer, hitTestSceneNode, SceneRenderer } from '../../core/Renderer';
 
 interface SceneCanvasProps {
   sceneData: SceneNode | null;
@@ -16,6 +16,7 @@ export function SceneCanvas({ sceneData }: SceneCanvasProps) {
   const selectedHit = useSceneStore((state) => state.selectedHit);
   const setSelectedHit = useSceneStore((state) => state.setSelectedHit);
   const updateSelectedNodeProps = useSceneStore((state) => state.updateSelectedNodeProps);
+  const privateNodeState = useSceneStore((state) => state.privateNodeState);
   const version = useSceneStore((state) => state.version);
 
   const [scale, setScale] = useState(1.0);
@@ -29,6 +30,30 @@ export function SceneCanvas({ sceneData }: SceneCanvasProps) {
   const dragStartRef = useRef({ sceneX: 0, sceneY: 0, nodeX: 0, nodeY: 0 });
   const dragSessionRef = useRef<{ groupId: string | null }>({ groupId: null });
   const keyboardMoveSessionRef = useRef<{ groupId: string | null; lastAt: number }>({ groupId: null, lastAt: 0 });
+  const privateStateByPath = useMemo(() => {
+    const map: Record<
+      string,
+      {
+        nodeVisible: boolean;
+        nodeOpacity: number;
+        referenceVisible: boolean;
+        referenceOpacity: number;
+        affectChildren: boolean;
+      }
+    > = {};
+    Object.entries(privateNodeState.pathToId).forEach(([path, id]) => {
+      const nodeState = privateNodeState.byId[id];
+      if (!nodeState) return;
+      map[path] = {
+        nodeVisible: nodeState.nodeVisible,
+        nodeOpacity: nodeState.nodeOpacity,
+        referenceVisible: nodeState.referenceVisible,
+        referenceOpacity: nodeState.referenceOpacity,
+        affectChildren: nodeState.affectChildren
+      };
+    });
+    return map;
+  }, [privateNodeState]);
 
   useEffect(() => {
     if (sceneData && sceneData.type === 'Scene' && containerRef.current) {
@@ -65,9 +90,11 @@ export function SceneCanvas({ sceneData }: SceneCanvasProps) {
       offsetY: offset.y
     };
 
-    sceneRendererRef.current.render(sceneData, transform);
+    sceneRendererRef.current.render(sceneData, transform, {
+      byPath: privateStateByPath
+    });
     gizmoRendererRef.current.render(selectedHit, transform);
-  }, [sceneData, selectedHit, scale, offset, version]);
+  }, [sceneData, selectedHit, scale, offset, version, privateStateByPath]);
 
   useEffect(() => {
     const handleResize = () => setOffset((prev) => ({ ...prev }));
@@ -168,7 +195,7 @@ export function SceneCanvas({ sceneData }: SceneCanvasProps) {
       const scenePoint = getScenePointFromClient(e.clientX, e.clientY);
       if (!scenePoint) return;
 
-      const hit = hitTestSceneNode(sceneData, 0, 0, scenePoint.x, scenePoint.y);
+      const hit = hitTestSceneNode(sceneData, 0, 0, scenePoint.x, scenePoint.y, privateStateByPath);
       setSelectedHit(hit);
 
       // Drag starts only when pressing down on an already-selected node.

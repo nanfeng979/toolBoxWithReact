@@ -9,8 +9,10 @@ export function App() {
   const sceneData = useSceneStore((state) => state.sceneData);
   const errorMsg = useSceneStore((state) => state.errorMsg);
   const isDirty = useSceneStore((state) => state.isDirty);
+  const privateNodeState = useSceneStore((state) => state.privateNodeState);
   const setSceneData = useSceneStore((state) => state.setSceneData);
   const setErrorMsg = useSceneStore((state) => state.setErrorMsg);
+  const initializePrivateNodeState = useSceneStore((state) => state.initializePrivateNodeState);
   const markSaved = useSceneStore((state) => state.markSaved);
   const bumpVersion = useSceneStore((state) => state.bumpVersion);
   const undoLast = useSceneStore((state) => state.undoLast);
@@ -18,6 +20,8 @@ export function App() {
 
   const originalFilePath = useRef('');
   const scenePath = useRef('');
+  const privateStateKey = useRef('');
+  const privateStateLoaded = useRef(false);
 
   const getTabId = () => {
     const urlParams = new URLSearchParams(window.location.search);
@@ -45,6 +49,21 @@ export function App() {
         const data = await response.json();
         setSceneData(data);
 
+        const hostApi = (window as any).hostApi;
+        const appId = window.location.hostname || 'unknown-app';
+        privateStateKey.current = `scene:${originalFilePath.current}`;
+        let persistedPrivateState: any = null;
+
+        if (hostApi?.getPrivateState) {
+          const saved = await hostApi.getPrivateState(appId, privateStateKey.current);
+          if (saved && typeof saved === 'object' && saved.byId && saved.pathToId) {
+            persistedPrivateState = saved;
+          }
+        }
+
+        initializePrivateNodeState(data, persistedPrivateState);
+        privateStateLoaded.current = true;
+
         await preloadImages(data, scenePath.current);
         bumpVersion();
       } catch (err: any) {
@@ -53,7 +72,17 @@ export function App() {
     };
 
     loadScene();
-  }, [bumpVersion, setErrorMsg, setSceneData]);
+  }, [bumpVersion, initializePrivateNodeState, setErrorMsg, setSceneData]);
+
+  useEffect(() => {
+    if (!privateStateLoaded.current || !privateStateKey.current) return;
+
+    const hostApi = (window as any).hostApi;
+    if (!hostApi?.setPrivateState) return;
+
+    const appId = window.location.hostname || 'unknown-app';
+    hostApi.setPrivateState(appId, privateStateKey.current, privateNodeState);
+  }, [privateNodeState]);
 
   useEffect(() => {
     window.parent.postMessage({ type: 'set-dirty', dirty: isDirty, tabId: getTabId() }, '*');

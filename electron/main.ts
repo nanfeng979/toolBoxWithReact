@@ -147,6 +147,26 @@ app.whenReady().then(() => {
   globalMiniAppService = new MiniAppService(explorerService);
   globalPluginService = new PluginService(explorerService);
 
+  const getMiniAppPrivateFilePath = (appId: string) => {
+    return path.join(app.getPath('userData'), 'miniapp-private', `${appId}.json`);
+  };
+
+  const readMiniAppPrivateStore = async (appId: string): Promise<Record<string, any>> => {
+    const filePath = getMiniAppPrivateFilePath(appId);
+    try {
+      const raw = await fs.readFile(filePath, 'utf-8');
+      return JSON.parse(raw);
+    } catch {
+      return {};
+    }
+  };
+
+  const writeMiniAppPrivateStore = async (appId: string, data: Record<string, any>) => {
+    const filePath = getMiniAppPrivateFilePath(appId);
+    await fs.mkdir(path.dirname(filePath), { recursive: true });
+    await fs.writeFile(filePath, JSON.stringify(data, null, 2), 'utf-8');
+  };
+
   // 注册自定义协议处理，用于解析形如 miniapp://[app-id]/[path] 的资源请求
   protocol.handle('miniapp', async (request) => {
     try {
@@ -299,6 +319,28 @@ app.whenReady().then(() => {
   ipcMain.handle('host:get-theme-color', () => {
     // 简单模拟，返回当前写死的暗色主题
     return 'dark';
+  });
+
+  ipcMain.handle('host:private-state:get', async (_, appId: string, key: string) => {
+    try {
+      const store = await readMiniAppPrivateStore(appId);
+      return store[key] ?? null;
+    } catch (err) {
+      console.error('Failed to load private state:', err);
+      return null;
+    }
+  });
+
+  ipcMain.handle('host:private-state:set', async (_, appId: string, key: string, value: any) => {
+    try {
+      const store = await readMiniAppPrivateStore(appId);
+      store[key] = value;
+      await writeMiniAppPrivateStore(appId, store);
+      return { success: true };
+    } catch (err: any) {
+      console.error('Failed to save private state:', err);
+      return { success: false, error: err?.message || 'unknown error' };
+    }
   });
 
   createWindow();

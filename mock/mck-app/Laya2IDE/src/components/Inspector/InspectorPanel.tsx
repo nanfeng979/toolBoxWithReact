@@ -1,5 +1,8 @@
 import React from 'react';
-import { useSceneStore } from '../../store/sceneStore';
+import { useSceneStore } from '../../store/sceneStore.ts';
+
+const REFERENCE_PRIVATE_TYPES = new Set(['Scene', 'View', 'Dialog']);
+const VISUAL_PRIVATE_TYPES = new Set(['Label', 'Image', 'Sprite']);
 
 function toNumberOrZero(value: string) {
   const parsed = Number(value);
@@ -68,10 +71,19 @@ function TextFieldRow({ label, value, onCommit }: TextFieldRowProps) {
 
 export function InspectorPanel() {
   const selectedHit = useSceneStore((state) => state.selectedHit);
+  const nodePathMap = useSceneStore((state) => state.nodePathMap);
+  const privateNodeState = useSceneStore((state) => state.privateNodeState);
   const updateSelectedNodeProps = useSceneStore((state) => state.updateSelectedNodeProps);
+  const updateNodePrivateSettingsByPath = useSceneStore((state) => state.updateNodePrivateSettingsByPath);
 
   const selectedNode = selectedHit?.node || null;
   const selectedProps = selectedNode?.props || {};
+  const selectedType = selectedNode?.type;
+  const supportsReferencePrivate = REFERENCE_PRIVATE_TYPES.has(selectedType || '');
+  const supportsNodePrivate = VISUAL_PRIVATE_TYPES.has(selectedType || '') || supportsReferencePrivate;
+  const selectedPath = selectedNode ? nodePathMap.get(selectedNode) || '' : '';
+  const selectedPrivateId = selectedPath ? privateNodeState.pathToId[selectedPath] : undefined;
+  const selectedPrivateState = selectedPrivateId ? privateNodeState.byId[selectedPrivateId] : undefined;
 
   const updateNumericProp = (key: 'x' | 'y' | 'width' | 'height', nextValue: number) => {
     updateSelectedNodeProps({ [key]: nextValue });
@@ -81,32 +93,31 @@ export function InspectorPanel() {
     updateSelectedNodeProps({ [key]: nextValue });
   };
 
-  if (!selectedNode) {
-    return (
-      <div
-        style={{
-          margin: 12,
-          border: '1px solid #3f3f46',
-          borderRadius: 6,
-          height: 'calc(100% - 24px)',
-          background: '#2a2a2a',
-          display: 'flex',
-          alignItems: 'center',
-          justifyContent: 'center',
-          color: '#9aa0a6',
-          fontSize: 12,
-          textAlign: 'center',
-          padding: 12,
-          boxSizing: 'border-box'
-        }}
-      >
-        Select a node from canvas or hierarchy
-      </div>
-    );
-  }
-
   return (
     <div style={{ padding: 12, overflow: 'auto', height: 'calc(100% - 1px)', boxSizing: 'border-box' }}>
+      {!selectedNode && (
+        <div
+          style={{
+            border: '1px solid #3f3f46',
+            borderRadius: 6,
+            minHeight: 64,
+            background: '#2a2a2a',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            color: '#9aa0a6',
+            fontSize: 12,
+            textAlign: 'center',
+            padding: 12,
+            boxSizing: 'border-box'
+          }}
+        >
+          Select a node from canvas or hierarchy
+        </div>
+      )}
+
+      {selectedNode && (
+        <>
       <div
         style={{
           border: '1px solid #3f3f46',
@@ -173,6 +184,105 @@ export function InspectorPanel() {
             onCommit={(v) => updateTextProp('texture', v)}
           />
         </div>
+      )}
+
+      {supportsNodePrivate && (
+        <div
+          style={{
+            border: '1px solid #3f3f46',
+            borderRadius: 6,
+            padding: 10,
+            marginTop: 12,
+            background: '#2a2a2a'
+          }}
+        >
+          <div style={{ color: '#9aa0a6', fontSize: 11, marginBottom: 10 }}>
+            私有属性
+          </div>
+          {/* <div style={{ color: '#7f7f7f', fontSize: 11, marginBottom: 8 }}>
+            编号: {selectedPrivateState?.id || '-'}
+          </div> */}
+          {/* <div style={{ color: '#7f7f7f', fontSize: 11, marginBottom: 10, wordBreak: 'break-all' }}>
+            路径: {selectedPrivateState?.path || selectedPath || '-'}
+          </div> */}
+          <label style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 10 }}>
+            <span style={{ color: '#d0d0d0', fontSize: 12 }}>影响子对象</span>
+            <input
+              type="checkbox"
+              checked={selectedPrivateState?.affectChildren ?? true}
+              disabled={!selectedPrivateState}
+              onChange={(e) => updateNodePrivateSettingsByPath(selectedPath, { affectChildren: e.target.checked })}
+            />
+          </label>
+          <label style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 10 }}>
+            <span style={{ color: '#d0d0d0', fontSize: 12 }}>
+              节点显示
+            </span>
+            <input
+              type="checkbox"
+              checked={selectedPrivateState?.nodeVisible ?? true}
+              disabled={!selectedPrivateState}
+              onChange={(e) => updateNodePrivateSettingsByPath(selectedPath, { nodeVisible: e.target.checked })}
+            />
+          </label>
+          <label style={{ display: 'block' }}>
+            <div style={{ color: '#d0d0d0', fontSize: 12, marginBottom: 6 }}>
+              节点透明度：{(selectedPrivateState?.nodeOpacity ?? 1).toFixed(2)}
+            </div>
+            <input
+              type="range"
+              min={0}
+              max={1}
+              step={0.05}
+              value={selectedPrivateState?.nodeOpacity ?? 1}
+              disabled={!selectedPrivateState}
+              onChange={(e) => updateNodePrivateSettingsByPath(selectedPath, { nodeOpacity: Number(e.target.value) })}
+              style={{ width: '100%' }}
+            />
+          </label>
+        </div>
+      )}
+
+      {supportsReferencePrivate && (
+        <div
+          style={{
+            border: '1px solid #3f3f46',
+            borderRadius: 6,
+            padding: 10,
+            marginTop: 12,
+            background: '#2a2a2a'
+          }}
+        >
+          <div style={{ color: '#9aa0a6', fontSize: 11, marginBottom: 10 }}>私有属性 / 参考图</div>
+          <label style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 10 }}>
+            <span style={{ color: '#d0d0d0', fontSize: 12 }}>参考图显示</span>
+            <input
+              type="checkbox"
+              checked={selectedPrivateState?.referenceVisible ?? true}
+              disabled={!selectedPrivateState}
+              onChange={(e) => updateNodePrivateSettingsByPath(selectedPath, { referenceVisible: e.target.checked })}
+            />
+          </label>
+          <label style={{ display: 'block' }}>
+            <div style={{ color: '#d0d0d0', fontSize: 12, marginBottom: 6 }}>
+              参考图透明度：{(selectedPrivateState?.referenceOpacity ?? 1).toFixed(2)}
+            </div>
+            <input
+              type="range"
+              min={0}
+              max={1}
+              step={0.05}
+              value={selectedPrivateState?.referenceOpacity ?? 1}
+              disabled={!selectedPrivateState}
+              onChange={(e) => updateNodePrivateSettingsByPath(selectedPath, { referenceOpacity: Number(e.target.value) })}
+              style={{ width: '100%' }}
+            />
+          </label>
+        </div>
+      )}
+
+      {!supportsNodePrivate && !supportsReferencePrivate}
+        </>
       )}
     </div>
   );
