@@ -1,6 +1,6 @@
 import React, { useEffect, useRef } from 'react';
 import { SceneCanvas } from './components/Viewport/SceneCanvas';
-import { HierarchyPlaceholder } from './components/Hierarchy/HierarchyPlaceholder';
+import { HierarchyPanel } from './components/Hierarchy/HierarchyPanel';
 import { InspectorPlaceholder } from './components/Inspector/InspectorPlaceholder';
 import { preloadImages } from './utils/sceneUtils';
 import { useSceneStore } from './store/sceneStore';
@@ -84,7 +84,7 @@ export function App() {
         <div style={{ padding: '10px 12px', fontSize: 12, color: '#c0c0c0', borderBottom: '1px solid #333' }}>
           HIERARCHY
         </div>
-        <HierarchyPlaceholder />
+        <HierarchyPanel />
       </aside>
 
       <main style={{ flex: 1, position: 'relative' }}>

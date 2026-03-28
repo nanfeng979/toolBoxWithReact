@@ -208,3 +208,54 @@ export function hitTestSceneNode(
 
   return null;
 }
+
+export function resolveHitByNode(
+  root: SceneNode,
+  targetNode: SceneNode,
+  px: number = 0,
+  py: number = 0
+): HitResult | null {
+  const p = root.props || {};
+  const x = px + (p.x || 0);
+  const y = py + (p.y || 0);
+  const w = p.width || 0;
+  const h = p.height || 0;
+
+  let actualW = w;
+  let actualH = h;
+
+  if ((root.type === 'Image' || root.type === 'Sprite') && (p.skin || p.texture)) {
+    const img = imageCache[p.skin || p.texture];
+    if (img) {
+      actualW = w || img.width;
+      actualH = h || img.height;
+    }
+  } else if (root.type === 'Label') {
+    const fontSize = p.fontSize || 20;
+    const lines = (p.text || '').replace(/\\n/g, '\n').split('\n');
+    actualH = h || lines.length * fontSize * 1.2;
+    actualW = w || Math.max(...lines.map((line: string) => line.length * fontSize * 0.6));
+  } else if (root.type === 'Scene') {
+    actualW = p.width || 800;
+    actualH = p.height || 600;
+  }
+
+  if (root === targetNode) {
+    return {
+      node: root,
+      x,
+      y,
+      w: actualW,
+      h: actualH
+    };
+  }
+
+  if (!root.child) return null;
+
+  for (const child of root.child) {
+    const result = resolveHitByNode(child, targetNode, x, y);
+    if (result) return result;
+  }
+
+  return null;
+}

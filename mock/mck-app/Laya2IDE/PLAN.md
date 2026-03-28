@@ -79,9 +79,21 @@ mock/mck-app/Laya2IDE/
 1. 在 Viewport 顶层附加独立事件监听，实现可靠的 **缩放平移 (Pan/Zoom)**。
 2. 引入 **编辑控制器 (Controller)**，在选中节点后，计算其局部坐标，允许在 Gizmo 层上长按并拖拽改变节点的 `x` 和 `y`，并实时同步给 `sceneStore`。
 
-### Phase 4: 层级与属性面板的强化 (Hierarchy & Inspector)
-1. 层级树：在原有基础上增加“右键唤出菜单”，支持 `Add`, `Delete`, `Duplicate`。
-2. 属性面板：抽象为表单项（NumberInput, StringInput, Select）。
+### Phase 4: 层级与属性面板的强化 (Hierarchy & Inspector) *(In Progress)*
+1. ✅ 左侧层级树已从占位替换为真实结构渲染：
+  - 基于 `.scene` 递归渲染节点树。
+  - 节点命名采用 `props.var` > `props.name` > `type` 的回退策略。
+  - 支持折叠/展开子节点。
+  - 点击层级节点可联动中间 Viewport 选中（通过反查节点包围盒，映射为 `selectedHit`）。
+2. ⏳ 待完成：右键菜单（`Add`, `Delete`, `Duplicate`）。
+3. ⏳ 待完成：右侧 Inspector 从占位替换为动态属性编辑表单。
+
+> 当前状态：左侧区域已具备实用形态，后续重点转向“结构编辑 + 属性编辑”双闭环。
+
+### Phase 4.1 建议迭代顺序 (Next)
+1. 先做 Inspector 最小可用版：仅支持 `x/y/width/height` 数值编辑并实时刷新 Viewport。
+2. 再做 Hierarchy 右键菜单中的 `Delete`（最小破坏性），验证节点树与画布的一致更新。
+3. 最后加入 `Duplicate` 与 `Add`，并同步接入 Undo/Redo 的 Action 轨道。
 
 ### Phase 5: 高级编辑器向 (Advanced IDE Features)
 1. 添加撤销与重做系统 (Undo/Redo Pipeline)。
