@@ -84,6 +84,13 @@ mock/mck-app/Laya2IDE/
 3. ✅ 编辑器脏状态与保存链路已打通：
   - 属性变更会设置 `isDirty = true`，并通过 `postMessage(type: 'set-dirty')` 回传宿主，标签页显示 `*`。
   - 支持 `Ctrl+S / Cmd+S`，触发 `postMessage(type: 'save-file')` 将当前 scene 序列化后写回源 `.scene` 文件。
+4. ✅ 键盘位移与撤销已接入：
+  - 支持方向键 `↑ ↓ ← →` 直接移动当前选中对象坐标。
+  - 移动步长与当前缩放相关：视角越远（缩放越小）步长越大；视角越近步长越小；始终为整数且最小值为 `1`。
+  - 支持 `Ctrl+Z / Cmd+Z` 撤销对象属性变更。
+  - 支持 `Ctrl+Y` 与 `Cmd/Ctrl+Shift+Z` 重做。
+  - 针对方向键连续移动，撤销采用“会话合并”策略：一次连续按键撤销会回到该次连续操作的初始位置，而不是逐键回退。
+  - 鼠标拖拽同样使用单次历史会话：一次拖动只记录鼠标按下时的位置，`Ctrl+Z` 会回到拖拽开始点，而不是回退到上一个拖拽中间帧。
 
 ### Phase 4: 层级与属性面板的强化 (Hierarchy & Inspector) *(In Progress)*
 1. ✅ 左侧层级树已从占位替换为真实结构渲染：
@@ -117,12 +124,20 @@ mock/mck-app/Laya2IDE/
 ### 保存机制说明 (新增)
 1. 当前保存策略为“整文件重写”：将内存中的 scene JSON 全量序列化写回磁盘（格式化缩进 4 空格）。
 2. 该策略能稳定落地当前迭代目标；后续若要做真正“增量 patch 保存”，可在 `applySceneMutation` 层记录操作日志并输出差异补丁。
+3. ✅ 已引入保存点（savePoint）逻辑：
+  - 保存成功时记录当前历史游标为保存点。
+  - Undo/Redo 后若历史游标回到保存点，会自动清除标签页 `*`。
+  - 若偏离保存点，`*` 自动恢复显示。
 
 ### Phase 4.2 建议实现细节 (新增)
 1. Inspector 建议拆分为 “基础 Transform 组 + 类型专属组”，避免所有字段混在一个面板中。
 2. ✅ 属性更新已统一走 Store action（`updateSelectedNodeProps`），组件侧不再直接散落写入逻辑。
 3. 在 Inspector 输入中增加 `onBlur` 提交策略（可选），为未来 Undo/Redo 做“单次操作合并”预留空间。
 4. 建议新增 `applySceneMutation` 统一入口（批处理 + dirty 标记 + history push），避免后续增删节点时动作分散。
+5. ✅ 已支持 `Ctrl+Y / Cmd+Shift+Z` 重做链路，与 `Ctrl+Z` 配套。
+6. ✅ 已支持保存点回归自动清除 `*`。
+7. 拖拽和键盘移动都建议使用“会话 ID + 合并策略”统一管理，避免后续不同交互来源的历史碎片化。
+8. 建议后续在 UI 底部状态栏增加 `History: cursor/total` 调试信息，便于验证复杂编辑链路。
 
 ### Phase 5: 高级编辑器向 (Advanced IDE Features)
 1. 添加撤销与重做系统 (Undo/Redo Pipeline)。

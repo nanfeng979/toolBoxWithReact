@@ -27,6 +27,8 @@ export function SceneCanvas({ sceneData }: SceneCanvasProps) {
   const lastPointerRef = useRef({ x: 0, y: 0 });
   const interactionModeRef = useRef<'none' | 'pan' | 'drag'>('none');
   const dragStartRef = useRef({ sceneX: 0, sceneY: 0, nodeX: 0, nodeY: 0 });
+  const dragSessionRef = useRef<{ groupId: string | null }>({ groupId: null });
+  const keyboardMoveSessionRef = useRef<{ groupId: string | null; lastAt: number }>({ groupId: null, lastAt: 0 });
 
   useEffect(() => {
     if (sceneData && sceneData.type === 'Scene' && containerRef.current) {
@@ -93,10 +95,53 @@ export function SceneCanvas({ sceneData }: SceneCanvasProps) {
     return () => canvas.removeEventListener('wheel', onWheel);
   }, []);
 
+  useEffect(() => {
+    const isEditableTarget = (target: EventTarget | null) => {
+      const el = target as HTMLElement | null;
+      if (!el) return false;
+      const tag = el.tagName;
+      return el.isContentEditable || tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT';
+    };
+
+    const onKeyDown = (e: KeyboardEvent) => {
+      if (isEditableTarget(e.target)) return;
+
+      let dirX = 0;
+      let dirY = 0;
+      if (e.key === 'ArrowLeft') dirX = -1;
+      else if (e.key === 'ArrowRight') dirX = 1;
+      else if (e.key === 'ArrowUp') dirY = -1;
+      else if (e.key === 'ArrowDown') dirY = 1;
+      else return;
+
+      if (!selectedHit?.node) return;
+      e.preventDefault();
+
+      const now = Date.now();
+      const maxSessionGapMs = 300;
+      const prevSession = keyboardMoveSessionRef.current;
+      const keepSession = prevSession.groupId && now - prevSession.lastAt <= maxSessionGapMs;
+      const groupId = keepSession ? prevSession.groupId! : `kb-move-${now}`;
+      keyboardMoveSessionRef.current = { groupId, lastAt: now };
+
+      // Zoomed out => larger step. Zoomed in => smaller step. Integer and minimum 1.
+      const step = Math.max(1, Math.round(2 / Math.max(scale, 0.05)));
+      const p = selectedHit.node.props || {};
+      const nextX = Math.round(Number(p.x || 0) + dirX * step);
+      const nextY = Math.round(Number(p.y || 0) + dirY * step);
+
+      updateSelectedNodeProps({ x: nextX, y: nextY }, { groupId });
+    };
+
+    window.addEventListener('keydown', onKeyDown);
+    return () => window.removeEventListener('keydown', onKeyDown);
+  }, [scale, selectedHit, updateSelectedNodeProps]);
+
   const stopPanning = () => {
     isPanningRef.current = false;
     activePointerIdRef.current = null;
     interactionModeRef.current = 'none';
+    dragSessionRef.current.groupId = null;
     setIsPanning(false);
     setIsDragging(false);
   };
@@ -132,6 +177,7 @@ export function SceneCanvas({ sceneData }: SceneCanvasProps) {
         e.currentTarget.setPointerCapture(e.pointerId);
         activePointerIdRef.current = e.pointerId;
         interactionModeRef.current = 'drag';
+        dragSessionRef.current.groupId = `drag-${Date.now()}`;
         setIsDragging(true);
 
         const p = hit.node.props || {};
@@ -183,7 +229,7 @@ export function SceneCanvas({ sceneData }: SceneCanvasProps) {
       updateSelectedNodeProps({
         x: Math.round(dragStartRef.current.nodeX + deltaX),
         y: Math.round(dragStartRef.current.nodeY + deltaY)
-      });
+      }, { groupId: dragSessionRef.current.groupId || undefined });
     }
   };
 

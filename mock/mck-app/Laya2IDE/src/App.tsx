@@ -11,8 +11,10 @@ export function App() {
   const isDirty = useSceneStore((state) => state.isDirty);
   const setSceneData = useSceneStore((state) => state.setSceneData);
   const setErrorMsg = useSceneStore((state) => state.setErrorMsg);
-  const setDirty = useSceneStore((state) => state.setDirty);
+  const markSaved = useSceneStore((state) => state.markSaved);
   const bumpVersion = useSceneStore((state) => state.bumpVersion);
+  const undoLast = useSceneStore((state) => state.undoLast);
+  const redoLast = useSceneStore((state) => state.redoLast);
 
   const originalFilePath = useRef('');
   const scenePath = useRef('');
@@ -58,7 +60,37 @@ export function App() {
   }, [isDirty]);
 
   useEffect(() => {
+    const isEditableTarget = (target: EventTarget | null) => {
+      const el = target as HTMLElement | null;
+      if (!el) return false;
+      const tag = el.tagName;
+      return el.isContentEditable || tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT';
+    };
+
     const onKeyDown = (e: KeyboardEvent) => {
+      if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'z') {
+        // Keep native undo in input fields.
+        if (isEditableTarget(e.target)) return;
+
+        // Cmd/Ctrl+Shift+Z => redo
+        if (e.shiftKey) {
+          e.preventDefault();
+          redoLast();
+          return;
+        }
+
+        e.preventDefault();
+        undoLast();
+        return;
+      }
+
+      if (e.ctrlKey && e.key.toLowerCase() === 'y') {
+        if (isEditableTarget(e.target)) return;
+        e.preventDefault();
+        redoLast();
+        return;
+      }
+
       if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 's') {
         e.preventDefault();
         if (!isDirty || !sceneData || !originalFilePath.current) return;
@@ -73,13 +105,13 @@ export function App() {
           '*'
         );
 
-        setDirty(false);
+        markSaved();
       }
     };
 
     window.addEventListener('keydown', onKeyDown);
     return () => window.removeEventListener('keydown', onKeyDown);
-  }, [isDirty, sceneData, setDirty]);
+  }, [isDirty, sceneData, markSaved, redoLast, undoLast]);
 
   return (
     <div
