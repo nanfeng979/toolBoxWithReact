@@ -2,6 +2,7 @@ import React, { useEffect, useRef } from 'react';
 import { SceneCanvas } from './components/Viewport/SceneCanvas';
 import { HierarchyPanel } from './components/Hierarchy/HierarchyPanel';
 import { InspectorPanel } from './components/Inspector/InspectorPanel';
+import { formatSceneForSave } from './utils/sceneFormatter';
 import { preloadImages } from './utils/sceneUtils';
 import { useSceneStore } from './store/sceneStore';
 
@@ -128,7 +129,7 @@ export function App() {
           {
             type: 'save-file',
             filePath: originalFilePath.current,
-            content: JSON.stringify(sceneData, null, 4),
+            content: formatSceneForSave(sceneData),
             tabId: getTabId()
           },
           '*'
