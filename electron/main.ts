@@ -147,11 +147,79 @@ app.whenReady().then(() => {
   globalMiniAppService = new MiniAppService(explorerService);
   globalPluginService = new PluginService(explorerService);
 
+  const LEGACY_LAYA2IDE_APP_ID = 'laya2-ide';
+  const SCENE_KEY_PREFIX = 'scene:';
+
+  const normalizeFsPath = (input: string) => input.replace(/\//g, path.sep);
+
+  const parseScenePathFromKey = (key: string) => {
+    if (!key || !key.startsWith(SCENE_KEY_PREFIX)) return null;
+    const raw = key.slice(SCENE_KEY_PREFIX.length).trim();
+    if (!raw) return null;
+    return normalizeFsPath(raw);
+  };
+
+  const getLaya2IDEPrivateDir = () => {
+    return path.join(app.getPath('userData'), 'miniapp-private', 'laya2IDE');
+  };
+
+  const buildScenePrivateFileName = (scenePath: string) => {
+    const normalized = path.normalize(scenePath);
+    const parsed = path.parse(normalized);
+    const parts = parsed.dir.split(path.sep).filter(Boolean);
+    const layaIndex = parts.findIndex((segment) => segment.toLowerCase() === 'laya');
+
+    let relParts: string[];
+    if (layaIndex > 0) {
+      relParts = [...parts.slice(layaIndex - 1), parsed.name];
+    } else {
+      // Fallback: use the tail path segments if no `laya` directory can be found.
+      const fallback = [...parts.slice(Math.max(0, parts.length - 4)), parsed.name];
+      relParts = fallback.length ? fallback : [parsed.name || 'scene'];
+    }
+
+    const safeName = relParts
+      .join('_')
+      .replace(/[<>:"/\\|?*]+/g, '_')
+      .replace(/\s+/g, '_')
+      .replace(/_+/g, '_')
+      .replace(/^_+|_+$/g, '');
+
+    return `${safeName || 'scene'}.json`;
+  };
+
+  const getScenePrivateFilePathByKey = (key: string) => {
+    const scenePath = parseScenePathFromKey(key);
+    if (!scenePath) return null;
+    return path.join(getLaya2IDEPrivateDir(), buildScenePrivateFileName(scenePath));
+  };
+
+  const readScenePrivateStateByKey = async (key: string) => {
+    const filePath = getScenePrivateFilePathByKey(key);
+    if (!filePath) return null;
+
+    try {
+      const raw = await fs.readFile(filePath, 'utf-8');
+      return JSON.parse(raw);
+    } catch {
+      return null;
+    }
+  };
+
+  const writeScenePrivateStateByKey = async (key: string, value: unknown) => {
+    const filePath = getScenePrivateFilePathByKey(key);
+    if (!filePath) return false;
+
+    await fs.mkdir(path.dirname(filePath), { recursive: true });
+    await fs.writeFile(filePath, JSON.stringify(value, null, 2), 'utf-8');
+    return true;
+  };
+
   const getMiniAppPrivateFilePath = (appId: string) => {
     return path.join(app.getPath('userData'), 'miniapp-private', `${appId}.json`);
   };
 
-  const readMiniAppPrivateStore = async (appId: string): Promise<Record<string, any>> => {
+  const readMiniAppPrivateStore = async (appId: string): Promise<Record<string, unknown>> => {
     const filePath = getMiniAppPrivateFilePath(appId);
     try {
       const raw = await fs.readFile(filePath, 'utf-8');
@@ -161,7 +229,7 @@ app.whenReady().then(() => {
     }
   };
 
-  const writeMiniAppPrivateStore = async (appId: string, data: Record<string, any>) => {
+  const writeMiniAppPrivateStore = async (appId: string, data: Record<string, unknown>) => {
     const filePath = getMiniAppPrivateFilePath(appId);
     await fs.mkdir(path.dirname(filePath), { recursive: true });
     await fs.writeFile(filePath, JSON.stringify(data, null, 2), 'utf-8');
@@ -208,7 +276,7 @@ app.whenReady().then(() => {
     try {
       const url = new URL(request.url);
       // 以 asset://host/ 为前缀的请求，pathname 包含了斜杠开头的文件路径
-      let rawPath = decodeURIComponent(url.pathname);
+      const rawPath = decodeURIComponent(url.pathname);
       
       let targetPath = rawPath;
       // 修复 Windows 下的盘符解析，如 /D:/path -> D:/path
@@ -301,9 +369,9 @@ app.whenReady().then(() => {
     try {
       await fs.copyFile(srcPath, destPath);
       return { success: true };
-    } catch (err: any) {
+    } catch (err: unknown) {
       console.error('Failed to copy file:', err);
-      return { success: false, error: err.message };
+      return { success: false, error: err instanceof Error ? err.message : String(err) };
     }
   });
 
@@ -323,6 +391,15 @@ app.whenReady().then(() => {
 
   ipcMain.handle('host:private-state:get', async (_, appId: string, key: string) => {
     try {
+      // New strategy for Laya2IDE: one file per scene under miniapp-private/laya2IDE
+      if (appId === LEGACY_LAYA2IDE_APP_ID && key?.startsWith(SCENE_KEY_PREFIX)) {
+        const sceneState = await readScenePrivateStateByKey(key);
+        if (sceneState !== null) {
+          return sceneState;
+        }
+      }
+
+      // Backward compatibility: legacy single-file store by appId
       const store = await readMiniAppPrivateStore(appId);
       return store[key] ?? null;
     } catch (err) {
@@ -331,15 +408,24 @@ app.whenReady().then(() => {
     }
   });
 
-  ipcMain.handle('host:private-state:set', async (_, appId: string, key: string, value: any) => {
+  ipcMain.handle('host:private-state:set', async (_, appId: string, key: string, value: unknown) => {
     try {
+      // New strategy for Laya2IDE: one file per scene under miniapp-private/laya2IDE
+      if (appId === LEGACY_LAYA2IDE_APP_ID && key?.startsWith(SCENE_KEY_PREFIX)) {
+        const written = await writeScenePrivateStateByKey(key, value);
+        if (written) {
+          return { success: true };
+        }
+      }
+
+      // Fallback / legacy behavior
       const store = await readMiniAppPrivateStore(appId);
       store[key] = value;
       await writeMiniAppPrivateStore(appId, store);
       return { success: true };
-    } catch (err: any) {
+    } catch (err: unknown) {
       console.error('Failed to save private state:', err);
-      return { success: false, error: err?.message || 'unknown error' };
+      return { success: false, error: err instanceof Error ? err.message : 'unknown error' };
     }
   });
 
