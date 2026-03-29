@@ -1,4 +1,5 @@
 const INDENT = '    ';
+const NEWLINE = '\r\n';
 const INLINE_OBJECT_KEYS = new Set(['props']);
 const FORCE_MULTILINE_EMPTY_ARRAY_KEYS = new Set(['nodes', 'child', 'animations']);
 
@@ -12,7 +13,7 @@ function stringifyArray(value: unknown[], level: number, keyHint?: string): stri
 
   if (value.length === 0) {
     if (forceMultilineEmpty) {
-      return `[\n${INDENT.repeat(level + 1)}]`;
+      return `[${NEWLINE}${INDENT.repeat(level + 1)}]`;
     }
     return '[]';
   }
@@ -24,11 +25,11 @@ function stringifyArray(value: unknown[], level: number, keyHint?: string): stri
       return `${INDENT.repeat(level + 1)}${serializedItem}${suffix}`;
     });
 
-    return `[\n${lines.join('\n')}`;
+    return `[${NEWLINE}${lines.join(NEWLINE)}`;
   }
 
   const lines = value.map((item) => `${INDENT.repeat(level + 1)}${stringifyValue(item, level + 1)}`);
-  return `[\n${lines.join(',\n')}\n${INDENT.repeat(level)}]`;
+  return `[${NEWLINE}${lines.join(`,${NEWLINE}`)}${NEWLINE}${INDENT.repeat(level)}]`;
 }
 
 function stringifyObject(value: Record<string, unknown>, level: number): string {
@@ -49,7 +50,7 @@ function stringifyObject(value: Record<string, unknown>, level: number): string 
     return `${INDENT.repeat(level + 1)}${JSON.stringify(key)}:${serializedValue}`;
   });
 
-  return `{\n${lines.join(',\n')}\n${INDENT.repeat(level)}}`;
+  return `{${NEWLINE}${lines.join(`,${NEWLINE}`)}${NEWLINE}${INDENT.repeat(level)}}`;
 }
 
 function stringifyValue(value: unknown, level: number, keyHint?: string): string {

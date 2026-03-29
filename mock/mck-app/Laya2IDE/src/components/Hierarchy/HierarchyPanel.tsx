@@ -1,4 +1,4 @@
-import React, { useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { useSceneStore } from '../../store/sceneStore';
 import { SceneNode } from '../../types/scene';
 import { resolveHitByNode } from '../../core/Renderer.ts';
@@ -12,7 +12,9 @@ interface TreeRow {
 
 function getNodeLabel(node: SceneNode) {
   const props = node.props || {};
-  return props.var || props.name || node.type;
+  const name = String(props.name || node.type || '');
+  const varName = String(props.var || '').trim();
+  return varName ? `${name} (${varName})` : name;
 }
 
 function flattenTree(node: SceneNode, depth: number, path: string, collapsed: Set<string>, rows: TreeRow[]) {
@@ -30,8 +32,12 @@ export function HierarchyPanel() {
   const sceneData = useSceneStore((state) => state.sceneData);
   const selectedHit = useSceneStore((state) => state.selectedHit);
   const setSelectedHit = useSceneStore((state) => state.setSelectedHit);
+  const updateSelectedNodeProps = useSceneStore((state) => state.updateSelectedNodeProps);
 
   const [collapsedPaths, setCollapsedPaths] = useState<Set<string>>(new Set());
+  const [editingPath, setEditingPath] = useState<string | null>(null);
+  const [editingName, setEditingName] = useState('');
+  const editingInputRef = useRef<HTMLInputElement | null>(null);
 
   const rows = useMemo(() => {
     if (!sceneData) return [] as TreeRow[];
@@ -55,6 +61,61 @@ export function HierarchyPanel() {
     if (hit) setSelectedHit(hit);
     else setSelectedHit({ node, x: 0, y: 0, w: 0, h: 0 });
   };
+
+  const selectedRow = useMemo(() => {
+    if (!selectedHit?.node) return null;
+    return rows.find((row) => row.node === selectedHit.node) || null;
+  }, [rows, selectedHit]);
+
+  const beginRenameSelectedNode = () => {
+    if (!selectedRow) return;
+    const props = selectedRow.node.props || {};
+    const currentName = String(props.name || '');
+    setEditingPath(selectedRow.path);
+    setEditingName(currentName);
+  };
+
+  const commitRename = (row: TreeRow) => {
+    const trimmed = editingName.trim();
+    const props = row.node.props || {};
+    const fallback = String(props.name || '');
+    const nextName = trimmed || fallback;
+
+    handleSelectNode(row.node);
+    updateSelectedNodeProps({ name: nextName });
+    setEditingPath(null);
+  };
+
+  const cancelRename = () => {
+    setEditingPath(null);
+  };
+
+  useEffect(() => {
+    if (!editingPath) return;
+    editingInputRef.current?.focus();
+    editingInputRef.current?.select();
+  }, [editingPath]);
+
+  useEffect(() => {
+    const isEditableTarget = (target: EventTarget | null) => {
+      const el = target as HTMLElement | null;
+      if (!el) return false;
+      const tag = el.tagName;
+      return el.isContentEditable || tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT';
+    };
+
+    const onKeyDown = (e: KeyboardEvent) => {
+      if (e.key !== 'F2') return;
+      if (isEditableTarget(e.target)) return;
+      if (!selectedRow) return;
+
+      e.preventDefault();
+      beginRenameSelectedNode();
+    };
+
+    window.addEventListener('keydown', onKeyDown);
+    return () => window.removeEventListener('keydown', onKeyDown);
+  }, [selectedRow]);
 
   if (!sceneData) {
     return (
@@ -119,7 +180,39 @@ export function HierarchyPanel() {
               {row.hasChildren ? (isCollapsed ? '▶' : '▼') : ''}
             </div>
             <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', fontSize: 12 }}>
-              {label}
+              {editingPath === row.path ? (
+                <input
+                  ref={editingInputRef}
+                  type="text"
+                  value={editingName}
+                  onChange={(e) => setEditingName(e.target.value)}
+                  onBlur={() => commitRename(row)}
+                  onKeyDown={(e) => {
+                    if (e.key === 'Enter') {
+                      e.preventDefault();
+                      commitRename(row);
+                    }
+                    if (e.key === 'Escape') {
+                      e.preventDefault();
+                      cancelRename();
+                    }
+                  }}
+                  onClick={(e) => e.stopPropagation()}
+                  style={{
+                    width: '100%',
+                    height: 20,
+                    background: '#1f1f1f',
+                    border: '1px solid #4b4b4b',
+                    color: '#ffffff',
+                    borderRadius: 4,
+                    padding: '0 6px',
+                    fontSize: 12,
+                    outline: 'none'
+                  }}
+                />
+              ) : (
+                label
+              )}
             </span>
           </div>
         );

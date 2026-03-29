@@ -93,6 +93,10 @@ export function InspectorPanel() {
     updateSelectedNodeProps({ [key]: nextValue });
   };
 
+  const updateIdentityProp = (key: 'name' | 'var', nextValue: string) => {
+    updateSelectedNodeProps({ [key]: nextValue });
+  };
+
   return (
     <div style={{ padding: 12, overflow: 'auto', height: 'calc(100% - 1px)', boxSizing: 'border-box' }}>
       {!selectedNode && (
@@ -132,6 +136,20 @@ export function InspectorPanel() {
           {(selectedProps.var || selectedProps.name || selectedNode.type) as string}
         </div>
         <div style={{ color: '#7f7f7f', fontSize: 11, marginTop: 3 }}>{selectedNode.type}</div>
+      </div>
+
+      <div
+        style={{
+          border: '1px solid #3f3f46',
+          borderRadius: 6,
+          padding: 10,
+          marginBottom: 12,
+          background: '#2a2a2a'
+        }}
+      >
+        <div style={{ color: '#9aa0a6', fontSize: 11, marginBottom: 10 }}>IDENTITY</div>
+        <TextFieldRow label="name" value={String(selectedProps.name || '')} onCommit={(v) => updateIdentityProp('name', v)} />
+        <TextFieldRow label="var" value={String(selectedProps.var || '')} onCommit={(v) => updateIdentityProp('var', v)} />
       </div>
 
       <div

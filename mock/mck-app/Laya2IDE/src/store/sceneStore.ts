@@ -5,8 +5,10 @@ import { resolveHitByNode } from '../core/Renderer.ts';
 interface PropHistoryEntry {
   type: 'props';
   node: SceneNode;
-  before: Record<string, unknown>;
-  after: Record<string, unknown>;
+  beforeProps: Record<string, unknown>;
+  afterProps: Record<string, unknown>;
+  beforeNode: Record<string, unknown>;
+  afterNode: Record<string, unknown>;
   groupId?: string;
 }
 
@@ -65,6 +67,61 @@ function createPrivateNodeId() {
 
 function normalizeOpacity(value: number) {
   return Math.min(1, Math.max(0, Number(value || 0)));
+}
+
+function hasOwn(obj: Record<string, unknown>, key: string) {
+  return Object.prototype.hasOwnProperty.call(obj, key);
+}
+
+function toStringOrEmpty(value: unknown) {
+  if (value === null || value === undefined) return '';
+  return String(value);
+}
+
+function isValidIdentityValue(value: string) {
+  const trimmed = value.trim();
+  return trimmed.length > 0 && !/^\d/.test(trimmed);
+}
+
+function normalizeIdentityChanges(node: SceneNode, changes: Record<string, unknown>) {
+  const propChanges: Record<string, unknown> = { ...changes };
+  const nodeChanges: Record<string, unknown> = {};
+
+  if (!hasOwn(changes, 'name') && !hasOwn(changes, 'var')) {
+    return { propChanges, nodeChanges };
+  }
+
+  const props = node.props || {};
+  const currentName = toStringOrEmpty(props.name);
+  const currentVar = toStringOrEmpty(props.var);
+  const nextName = hasOwn(changes, 'name') ? toStringOrEmpty(changes.name).trim() : currentName;
+  const nextVar = hasOwn(changes, 'var') ? toStringOrEmpty(changes.var).trim() : currentVar;
+  const effectiveName = isValidIdentityValue(nextName) ? nextName : '';
+  const effectiveVar = isValidIdentityValue(nextVar) ? nextVar : '';
+
+  const searchKeyParts = [node.type, effectiveName, effectiveVar].filter((part) => part);
+  nodeChanges.searchKey = searchKeyParts.join(',');
+  nodeChanges.label = effectiveName || node.type;
+
+  // Ensure legacy nested keys are removed from props, searchKey/label must stay at node root level.
+  if (hasOwn(props, 'searchKey')) {
+    propChanges.searchKey = undefined;
+  }
+
+  if (hasOwn(changes, 'name')) {
+    if (!effectiveName) {
+      propChanges.name = undefined;
+    }
+    propChanges.label = undefined;
+  }
+
+  if (hasOwn(changes, 'var')) {
+    if (!effectiveVar) {
+      propChanges.var = undefined;
+    }
+  }
+
+  return { propChanges, nodeChanges };
 }
 
 function normalizeNodePrivateState(existing: Partial<NodePrivateState> | undefined, id: string, path: string): NodePrivateState {
@@ -245,14 +302,29 @@ export const useSceneStore = create<SceneStore>((set) => ({
 
       const selectedNode = state.selectedHit.node;
       selectedNode.props = selectedNode.props || {};
+      const nodeRecord = selectedNode as unknown as Record<string, unknown>;
+      const { propChanges, nodeChanges } = normalizeIdentityChanges(selectedNode, changes);
 
-      const before: Record<string, unknown> = {};
-      const after: Record<string, unknown> = {};
+      const beforeProps: Record<string, unknown> = {};
+      const afterProps: Record<string, unknown> = {};
+      const beforeNode: Record<string, unknown> = {};
+      const afterNode: Record<string, unknown> = {};
 
-      for (const [key, value] of Object.entries(changes)) {
-        before[key] = selectedNode.props[key];
-        selectedNode.props[key] = value;
-        after[key] = selectedNode.props[key];
+      for (const [key, value] of Object.entries(propChanges)) {
+        beforeProps[key] = selectedNode.props[key];
+        if (value === undefined) {
+          delete selectedNode.props[key];
+          afterProps[key] = undefined;
+        } else {
+          selectedNode.props[key] = value;
+          afterProps[key] = selectedNode.props[key];
+        }
+      }
+
+      for (const [key, value] of Object.entries(nodeChanges)) {
+        beforeNode[key] = nodeRecord[key];
+        nodeRecord[key] = value;
+        afterNode[key] = nodeRecord[key];
       }
 
       const recalculatedHit = resolveHitByNode(state.sceneData, selectedNode);
@@ -266,8 +338,10 @@ export const useSceneStore = create<SceneStore>((set) => ({
         const entry: PropHistoryEntry = {
           type: 'props',
           node: selectedNode,
-          before,
-          after,
+          beforeProps,
+          afterProps,
+          beforeNode,
+          afterNode,
           groupId: options?.groupId
         };
 
@@ -281,7 +355,11 @@ export const useSceneStore = create<SceneStore>((set) => ({
 
         if (canMerge) {
           history = [...history];
-          const merged = { ...last, after: { ...last.after, ...after } };
+          const merged = {
+            ...last,
+            afterProps: { ...last.afterProps, ...afterProps },
+            afterNode: { ...last.afterNode, ...afterNode }
+          };
           history[history.length - 1] = merged;
           historyCursor = history.length;
         } else {
@@ -308,12 +386,21 @@ export const useSceneStore = create<SceneStore>((set) => ({
       if (entry.type === 'props') {
         const node = entry.node;
         node.props = node.props || {};
+        const nodeRecord = node as unknown as Record<string, unknown>;
 
-        for (const [key, value] of Object.entries(entry.before)) {
+        for (const [key, value] of Object.entries(entry.beforeProps)) {
           if (value === undefined) {
             delete node.props[key];
           } else {
             node.props[key] = value;
+          }
+        }
+
+        for (const [key, value] of Object.entries(entry.beforeNode)) {
+          if (value === undefined) {
+            delete nodeRecord[key];
+          } else {
+            nodeRecord[key] = value;
           }
         }
 
@@ -340,12 +427,21 @@ export const useSceneStore = create<SceneStore>((set) => ({
       if (entry.type === 'props') {
         const node = entry.node;
         node.props = node.props || {};
+        const nodeRecord = node as unknown as Record<string, unknown>;
 
-        for (const [key, value] of Object.entries(entry.after)) {
+        for (const [key, value] of Object.entries(entry.afterProps)) {
           if (value === undefined) {
             delete node.props[key];
           } else {
             node.props[key] = value;
+          }
+        }
+
+        for (const [key, value] of Object.entries(entry.afterNode)) {
+          if (value === undefined) {
+            delete nodeRecord[key];
+          } else {
+            nodeRecord[key] = value;
           }
         }
 

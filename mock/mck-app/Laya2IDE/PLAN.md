@@ -118,6 +118,12 @@ mock/mck-app/Laya2IDE/
   - 当前支持私有字段：`Reference Visible`（开关）与 `Opacity`（透明度），按“选中节点”独立编辑。
   - 私有属性不写入 `.scene`，而是按 `appId + sceneFilePath` 作为 key 存储到 `app.getPath('userData')/miniapp-private/`。
   - 重新打开同一 scene 会自动从 appdata 回填；若历史 path 与当前节点路径不匹配，则该节点私有状态自动回退默认值并分配新 id。
+8. ✅ 已支持节点改名工作流（Hierarchy + Inspector 双入口）：
+  - Hierarchy 选中节点后按 `F2` 进入行内改名，`Enter` 提交、`Esc` 取消、失焦自动提交。
+  - Inspector 已将 `name + var` 作为独立的 `Identity` 区块统一编辑（不与 Transform 混排）。
+  - 改名会触发脏标记，并可通过 `Ctrl+S / Cmd+S` 保存回 `.scene`。
+  - 对齐 Laya 原生改名语义：修改 `name` 时同步更新与 `props` 同级的 `label`；修改 `name/var` 任一字段都会重建与 `props` 同级的 `searchKey=type,name,var`；当 `name` 或 `var` 为空时，对应 key 会被删除，`searchKey` 只保留非空片段，`label` 会回退为 `type`。
+  - `name` / `var` 不允许数字开头；如果输入不合法，会直接删除对应 key，不会留下空字符串。
 
 > 当前状态：左侧区域已具备实用形态，后续重点转向“结构编辑 + 属性编辑”双闭环。
 
@@ -133,7 +139,7 @@ mock/mck-app/Laya2IDE/
 4. 建议在 Inspector 中补充 `sceneBg` 字段编辑与“手动重载背景”按钮，方便验证美术资源替换。
 
 ### 保存机制说明 (新增)
-1. 当前保存策略为“整文件重写”：将内存中的 scene JSON 全量序列化写回磁盘（格式化缩进 4 空格）。
+1. 当前保存策略为“整文件重写”：将内存中的 scene JSON 全量序列化写回磁盘，并通过定制格式化器输出（如 `:` 后无空格、`props` 内联、`child/nodes` 空数组保留换行结构），同时保持 `CRLF` 换行风格。
 2. 该策略能稳定落地当前迭代目标；后续若要做真正“增量 patch 保存”，可在 `applySceneMutation` 层记录操作日志并输出差异补丁。
 3. ✅ 已引入保存点（savePoint）逻辑：
   - 保存成功时记录当前历史游标为保存点。
