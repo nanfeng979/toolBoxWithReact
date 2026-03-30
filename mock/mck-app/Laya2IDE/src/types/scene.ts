@@ -3,6 +3,12 @@ export interface SceneNode {
   props?: Record<string, any>;
   label?: string;
   searchKey?: string;
+  compId?: number;
+  nodeParent?: number;
+  x?: number;
+  isDirectory?: boolean;
+  isAniNode?: boolean;
+  hasChild?: boolean;
   child?: SceneNode[];
 }
 
