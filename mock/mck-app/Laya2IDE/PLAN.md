@@ -124,6 +124,12 @@ mock/mck-app/Laya2IDE/
   - 改名会触发脏标记，并可通过 `Ctrl+S / Cmd+S` 保存回 `.scene`。
   - 对齐 Laya 原生改名语义：修改 `name` 时同步更新与 `props` 同级的 `label`；修改 `name/var` 任一字段都会重建与 `props` 同级的 `searchKey=type,name,var`；当 `name` 或 `var` 为空时，对应 key 会被删除，`searchKey` 只保留非空片段，`label` 会回退为 `type`。
   - `name` / `var` 不允许数字开头；如果输入不合法，会直接删除对应 key，不会留下空字符串。
+9. ✅ 已支持层级树右键菜单（首个能力：创建 `ImageUI`）：
+  - 在 Hierarchy 右键任意节点可打开菜单并执行“创建 ImageUI”。
+  - 新节点会追加到该节点的 `child` 数组，结构遵循当前 Laya 数据约定（固定 `skin=comp/image.png`，`props` 不再包含默认 `x/y`，根级 `x` 按层级深度计算：顶级 `0`，每深一层 `+15`，并包含 `nodeParent/compId` 等字段）。
+  - `compId` 直接读取顶层节点 `maxID` 作为新组件 id，然后立即将 `maxID` 自增回写；`nodeParent` 取当前右键节点 id（`compId`）。
+  - `isDirectory` 与 `hasChild` 保持一致（当前阶段按同值写入与更新）。
+  - 创建后会自动刷新层级树并选中新节点，同时触发脏标记。
 
 > 当前状态：左侧区域已具备实用形态，后续重点转向“结构编辑 + 属性编辑”双闭环。
 
@@ -131,6 +137,8 @@ mock/mck-app/Laya2IDE/
 1. 先做 Hierarchy 右键菜单中的 `Delete`（最小破坏性），验证节点树与画布的一致更新。
 2. 再加入属性编辑后的资源刷新链路：当 `skin/texture` 变化时触发对应图片预加载，避免视图滞后。
 3. 最后加入 `Duplicate` 与 `Add`，并同步接入 Undo/Redo 的 Action 轨道。
+4. 建议将右键菜单能力统一为命令系统（`CreateImageUI / Duplicate / Delete / Rename`），便于复用与历史回放。
+5. 建议将“层级派生字段”（如 `x`、`isDirectory`、`hasChild`）统一封装在创建器/变更器中，避免未来不同入口产生不一致数据。
 
 ### 交互优化建议 (新增)
 1. 拖拽建议加入“最小位移阈值”判断（如 2~4 px），避免轻微手抖触发误拖。

@@ -2,12 +2,28 @@ import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { useSceneStore } from '../../store/sceneStore';
 import { SceneNode } from '../../types/scene';
 import { resolveHitByNode } from '../../core/Renderer.ts';
+import { createImageUIComponent } from '../../core/componentCreators';
 
 interface TreeRow {
   path: string;
   depth: number;
   node: SceneNode;
   hasChildren: boolean;
+}
+
+interface ContextMenuState {
+  x: number;
+  y: number;
+  row: TreeRow;
+}
+
+function toNumberOrZero(value: unknown) {
+  if (typeof value === 'number' && Number.isFinite(value)) return value;
+  if (typeof value === 'string') {
+    const num = Number(value);
+    return Number.isFinite(num) ? num : 0;
+  }
+  return 0;
 }
 
 function getNodeLabel(node: SceneNode) {
@@ -30,13 +46,17 @@ function flattenTree(node: SceneNode, depth: number, path: string, collapsed: Se
 
 export function HierarchyPanel() {
   const sceneData = useSceneStore((state) => state.sceneData);
+  const version = useSceneStore((state) => state.version);
   const selectedHit = useSceneStore((state) => state.selectedHit);
   const setSelectedHit = useSceneStore((state) => state.setSelectedHit);
   const updateSelectedNodeProps = useSceneStore((state) => state.updateSelectedNodeProps);
+  const setDirty = useSceneStore((state) => state.setDirty);
+  const bumpVersion = useSceneStore((state) => state.bumpVersion);
 
   const [collapsedPaths, setCollapsedPaths] = useState<Set<string>>(new Set());
   const [editingPath, setEditingPath] = useState<string | null>(null);
   const [editingName, setEditingName] = useState('');
+  const [contextMenu, setContextMenu] = useState<ContextMenuState | null>(null);
   const editingInputRef = useRef<HTMLInputElement | null>(null);
 
   const rows = useMemo(() => {
@@ -44,7 +64,7 @@ export function HierarchyPanel() {
     const nextRows: TreeRow[] = [];
     flattenTree(sceneData, 0, '0', collapsedPaths, nextRows);
     return nextRows;
-  }, [sceneData, collapsedPaths]);
+  }, [sceneData, collapsedPaths, version]);
 
   const toggleCollapse = (path: string) => {
     setCollapsedPaths((prev) => {
@@ -90,6 +110,41 @@ export function HierarchyPanel() {
     setEditingPath(null);
   };
 
+  const createImageUIAtRow = (row: TreeRow) => {
+    if (!sceneData) return;
+
+    if (!Array.isArray(row.node.child)) {
+      row.node.child = [];
+    }
+
+    const rootRecord = sceneData as unknown as Record<string, unknown>;
+    const currentMaxId = toNumberOrZero(rootRecord.maxID);
+    const nextCompId = currentMaxId;
+    rootRecord.maxID = currentMaxId + 1;
+
+    const parentCompId = toNumberOrZero(row.node.compId);
+    const nextNode = createImageUIComponent({
+      compId: nextCompId,
+      parentCompId,
+      depth: row.depth + 1
+    });
+    row.node.child.push(nextNode);
+    row.node.hasChild = true;
+    row.node.isDirectory = row.node.hasChild;
+
+    const nextCollapsed = new Set(collapsedPaths);
+    nextCollapsed.delete(row.path);
+    setCollapsedPaths(nextCollapsed);
+
+    const hit = resolveHitByNode(sceneData, nextNode);
+    if (hit) setSelectedHit(hit);
+    else setSelectedHit({ node: nextNode, x: 0, y: 0, w: 0, h: 0 });
+
+    setDirty(true);
+    bumpVersion();
+    setContextMenu(null);
+  };
+
   useEffect(() => {
     if (!editingPath) return;
     editingInputRef.current?.focus();
@@ -116,6 +171,16 @@ export function HierarchyPanel() {
     window.addEventListener('keydown', onKeyDown);
     return () => window.removeEventListener('keydown', onKeyDown);
   }, [selectedRow]);
+
+  useEffect(() => {
+    const closeMenu = () => setContextMenu(null);
+    window.addEventListener('pointerdown', closeMenu);
+    window.addEventListener('scroll', closeMenu, true);
+    return () => {
+      window.removeEventListener('pointerdown', closeMenu);
+      window.removeEventListener('scroll', closeMenu, true);
+    };
+  }, []);
 
   if (!sceneData) {
     return (
@@ -162,6 +227,12 @@ export function HierarchyPanel() {
               userSelect: 'none'
             }}
             onClick={() => handleSelectNode(row.node)}
+            onContextMenu={(e) => {
+              e.preventDefault();
+              e.stopPropagation();
+              handleSelectNode(row.node);
+              setContextMenu({ x: e.clientX, y: e.clientY, row });
+            }}
             title={`${label} (${row.node.type})`}
           >
             <div
@@ -217,6 +288,49 @@ export function HierarchyPanel() {
           </div>
         );
       })}
+
+      {contextMenu && (
+        <div
+          style={{
+            position: 'fixed',
+            left: contextMenu.x,
+            top: contextMenu.y,
+            minWidth: 140,
+            background: '#2a2a2a',
+            border: '1px solid #3f3f46',
+            borderRadius: 6,
+            boxShadow: '0 8px 18px rgba(0, 0, 0, 0.45)',
+            zIndex: 9999,
+            padding: 4
+          }}
+          onPointerDown={(e) => e.stopPropagation()}
+          onContextMenu={(e) => {
+            e.preventDefault();
+            e.stopPropagation();
+          }}
+        >
+          <button
+            type="button"
+            onClick={(e) => {
+              e.stopPropagation();
+              createImageUIAtRow(contextMenu.row);
+            }}
+            style={{
+              width: '100%',
+              border: 'none',
+              borderRadius: 4,
+              background: 'transparent',
+              color: '#d4d4d4',
+              textAlign: 'left',
+              fontSize: 12,
+              padding: '6px 8px',
+              cursor: 'pointer'
+            }}
+          >
+            创建 ImageUI
+          </button>
+        </div>
+      )}
     </div>
   );
 }

@@ -1,0 +1,24 @@
+import { SceneNode } from '../../types/scene';
+import { CreateComponentContext } from './types';
+
+function getHierarchyXByDepth(depth: number) {
+  return Math.max(0, depth) * 15;
+}
+
+export function createImageUIComponent(context: CreateComponentContext): SceneNode {
+  const hasChild = false;
+
+  return {
+    x: getHierarchyXByDepth(context.depth),
+    type: 'Image',
+    searchKey: 'Image',
+    props: { skin: 'comp/image.png' },
+    nodeParent: context.parentCompId,
+    label: 'Image',
+    isDirectory: hasChild,
+    isAniNode: true,
+    hasChild,
+    compId: context.compId,
+    child: []
+  };
+}
