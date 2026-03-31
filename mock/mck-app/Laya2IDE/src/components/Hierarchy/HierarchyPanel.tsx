@@ -50,6 +50,7 @@ export function HierarchyPanel() {
   const selectedHit = useSceneStore((state) => state.selectedHit);
   const setSelectedHit = useSceneStore((state) => state.setSelectedHit);
   const updateSelectedNodeProps = useSceneStore((state) => state.updateSelectedNodeProps);
+  const deleteNodeByPath = useSceneStore((state) => state.deleteNodeByPath);
   const setDirty = useSceneStore((state) => state.setDirty);
   const bumpVersion = useSceneStore((state) => state.bumpVersion);
 
@@ -145,6 +146,19 @@ export function HierarchyPanel() {
     setContextMenu(null);
   };
 
+  const deleteNodeAtRow = (row: TreeRow) => {
+    // Root node is the scene container, do not allow deleting it.
+    if (row.path === '0') return;
+    deleteNodeByPath(row.path);
+    setEditingPath((prev) => (prev === row.path ? null : prev));
+    setContextMenu(null);
+  };
+
+  const deleteSelectedNode = () => {
+    if (!selectedRow) return;
+    deleteNodeAtRow(selectedRow);
+  };
+
   useEffect(() => {
     if (!editingPath) return;
     editingInputRef.current?.focus();
@@ -160,17 +174,26 @@ export function HierarchyPanel() {
     };
 
     const onKeyDown = (e: KeyboardEvent) => {
-      if (e.key !== 'F2') return;
       if (isEditableTarget(e.target)) return;
-      if (!selectedRow) return;
 
-      e.preventDefault();
-      beginRenameSelectedNode();
+      if (e.key === 'F2') {
+        if (!selectedRow) return;
+        e.preventDefault();
+        beginRenameSelectedNode();
+        return;
+      }
+
+      if (e.key === 'Delete') {
+        if (!selectedRow) return;
+        if (editingPath) return;
+        e.preventDefault();
+        deleteSelectedNode();
+      }
     };
 
     window.addEventListener('keydown', onKeyDown);
     return () => window.removeEventListener('keydown', onKeyDown);
-  }, [selectedRow]);
+  }, [selectedRow, editingPath]);
 
   useEffect(() => {
     const closeMenu = () => setContextMenu(null);
@@ -328,6 +351,27 @@ export function HierarchyPanel() {
             }}
           >
             创建 ImageUI
+          </button>
+          <button
+            type="button"
+            onClick={(e) => {
+              e.stopPropagation();
+              deleteNodeAtRow(contextMenu.row);
+            }}
+            disabled={contextMenu.row.path === '0'}
+            style={{
+              width: '100%',
+              border: 'none',
+              borderRadius: 4,
+              background: 'transparent',
+              color: contextMenu.row.path === '0' ? '#777' : '#ffb4b4',
+              textAlign: 'left',
+              fontSize: 12,
+              padding: '6px 8px',
+              cursor: contextMenu.row.path === '0' ? 'not-allowed' : 'pointer'
+            }}
+          >
+            删除节点
           </button>
         </div>
       )}

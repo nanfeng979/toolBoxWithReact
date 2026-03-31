@@ -130,6 +130,12 @@ mock/mck-app/Laya2IDE/
   - `compId` 直接读取顶层节点 `maxID` 作为新组件 id，然后立即将 `maxID` 自增回写；`nodeParent` 取当前右键节点 id（`compId`）。
   - `isDirectory` 与 `hasChild` 保持一致（当前阶段按同值写入与更新）。
   - 创建后会自动刷新层级树并选中新节点，同时触发脏标记。
+10. ✅ 已支持节点删除（右键菜单 + `Delete` 快捷键）：
+  - 在 Hierarchy 右键菜单可删除当前节点（根节点不可删除）。
+  - 支持键盘 `Delete` 快捷删除当前选中节点（编辑输入状态下不会触发）。
+  - 删除后若父节点已无子节点，会自动将 `hasChild=false`，并同步 `isDirectory=false`。
+  - 删除后会自动选中父节点，并触发脏标记。
+  - ✅ 删除已接入 Undo/Redo 历史：支持连续多次删除后，通过 `Ctrl+Z / Cmd+Z` 按顺序逐步回退，并可通过 `Ctrl+Y / Cmd+Shift+Z` 逐步重做。
 
 > 当前状态：左侧区域已具备实用形态，后续重点转向“结构编辑 + 属性编辑”双闭环。
 

@@ -12,6 +12,17 @@ interface PropHistoryEntry {
   groupId?: string;
 }
 
+interface DeleteHistoryEntry {
+  type: 'delete';
+  parentNode: SceneNode;
+  removedNode: SceneNode;
+  index: number;
+  beforeParentHasChild: boolean;
+  beforeParentIsDirectory: boolean;
+}
+
+type HistoryEntry = PropHistoryEntry | DeleteHistoryEntry;
+
 interface UpdateNodePropsOptions {
   groupId?: string;
   skipHistory?: boolean;
@@ -153,7 +164,7 @@ interface SceneStore {
   errorMsg: string | null;
   version: number;
   isDirty: boolean;
-  history: PropHistoryEntry[];
+  history: HistoryEntry[];
   historyCursor: number;
   savedCursor: number;
   nodePathMap: Map<SceneNode, string>;
@@ -168,6 +179,7 @@ interface SceneStore {
   markSaved: () => void;
   bumpVersion: () => void;
   updateSelectedNodeProps: (changes: Record<string, unknown>, options?: UpdateNodePropsOptions) => void;
+  deleteNodeByPath: (path: string) => void;
   undoLast: () => void;
   redoLast: () => void;
 }
@@ -376,6 +388,58 @@ export const useSceneStore = create<SceneStore>((set) => ({
         historyCursor
       };
     }),
+  deleteNodeByPath: (path) =>
+    set((state) => {
+      if (!state.sceneData) return state;
+      if (!path || path === '0') return state;
+
+      const parts = path.split('.').map((part) => Number(part));
+      if (parts.some((n) => Number.isNaN(n))) return state;
+
+      const removeIndex = parts[parts.length - 1];
+      const parentPathParts = parts.slice(1, -1);
+
+      let parentNode: SceneNode = state.sceneData;
+      for (const childIndex of parentPathParts) {
+        if (!Array.isArray(parentNode.child) || !parentNode.child[childIndex]) return state;
+        parentNode = parentNode.child[childIndex];
+      }
+
+      if (!Array.isArray(parentNode.child)) return state;
+      if (removeIndex < 0 || removeIndex >= parentNode.child.length) return state;
+
+      const beforeParentHasChild = !!parentNode.hasChild;
+      const beforeParentIsDirectory = !!parentNode.isDirectory;
+      const removedNode = parentNode.child[removeIndex];
+      parentNode.child.splice(removeIndex, 1);
+
+      const hasChild = parentNode.child.length > 0;
+      parentNode.hasChild = hasChild;
+      parentNode.isDirectory = hasChild;
+
+      const nextSelectedHit = resolveHitByNode(state.sceneData, parentNode);
+
+      const historyBase = state.history.slice(0, state.historyCursor);
+      const entry: DeleteHistoryEntry = {
+        type: 'delete',
+        parentNode,
+        removedNode,
+        index: removeIndex,
+        beforeParentHasChild,
+        beforeParentIsDirectory
+      };
+      const nextHistory = [...historyBase, entry];
+      const nextCursor = nextHistory.length;
+
+      return {
+        selectedHit: nextSelectedHit || { node: parentNode, x: 0, y: 0, w: 0, h: 0 },
+        version: state.version + 1,
+        history: nextHistory,
+        historyCursor: nextCursor,
+        isDirty: nextCursor !== state.savedCursor,
+        nodePathMap: collectNodePaths(state.sceneData)
+      };
+    }),
   undoLast: () =>
     set((state) => {
       if (!state.sceneData || state.historyCursor <= 0) return state;
@@ -412,6 +476,29 @@ export const useSceneStore = create<SceneStore>((set) => ({
           version: state.version + 1,
           historyCursor: nextCursor,
           isDirty: nextCursor !== state.savedCursor
+        };
+      }
+
+      if (entry.type === 'delete') {
+        const parentNode = entry.parentNode;
+        if (!Array.isArray(parentNode.child)) {
+          parentNode.child = [];
+        }
+
+        const insertIndex = Math.max(0, Math.min(entry.index, parentNode.child.length));
+        parentNode.child.splice(insertIndex, 0, entry.removedNode);
+        parentNode.hasChild = entry.beforeParentHasChild;
+        parentNode.isDirectory = entry.beforeParentIsDirectory;
+
+        const restoredHit = resolveHitByNode(state.sceneData, entry.removedNode);
+        const nextCursor = state.historyCursor - 1;
+
+        return {
+          selectedHit: restoredHit || { node: entry.removedNode, x: 0, y: 0, w: 0, h: 0 },
+          version: state.version + 1,
+          historyCursor: nextCursor,
+          isDirty: nextCursor !== state.savedCursor,
+          nodePathMap: collectNodePaths(state.sceneData)
         };
       }
 
@@ -453,6 +540,33 @@ export const useSceneStore = create<SceneStore>((set) => ({
           version: state.version + 1,
           historyCursor: nextCursor,
           isDirty: nextCursor !== state.savedCursor
+        };
+      }
+
+      if (entry.type === 'delete') {
+        const parentNode = entry.parentNode;
+        if (!Array.isArray(parentNode.child) || parentNode.child.length === 0) return state;
+
+        let removeIndex = entry.index;
+        if (parentNode.child[removeIndex] !== entry.removedNode) {
+          removeIndex = parentNode.child.indexOf(entry.removedNode);
+        }
+        if (removeIndex < 0) return state;
+
+        parentNode.child.splice(removeIndex, 1);
+        const hasChild = parentNode.child.length > 0;
+        parentNode.hasChild = hasChild;
+        parentNode.isDirectory = hasChild;
+
+        const parentHit = resolveHitByNode(state.sceneData, parentNode);
+        const nextCursor = state.historyCursor + 1;
+
+        return {
+          selectedHit: parentHit || { node: parentNode, x: 0, y: 0, w: 0, h: 0 },
+          version: state.version + 1,
+          historyCursor: nextCursor,
+          isDirty: nextCursor !== state.savedCursor,
+          nodePathMap: collectNodePaths(state.sceneData)
         };
       }
 
