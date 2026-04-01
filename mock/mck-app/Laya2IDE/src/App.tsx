@@ -6,6 +6,35 @@ import { formatSceneForSave } from './utils/sceneFormatter';
 import { preloadImages } from './utils/sceneUtils';
 import { useSceneStore } from './store/sceneStore';
 
+const LAYOUT_STORAGE_KEY = 'laya2ide.layout.v1';
+const LEFT_MIN_WIDTH = 180;
+const RIGHT_MIN_WIDTH = 220;
+const CENTER_MIN_WIDTH = 320;
+const BOTTOM_MIN_HEIGHT = 180;
+const TOP_MIN_HEIGHT = 220;
+const RESIZER_SIZE = 4;
+
+type DragMode = 'left' | 'right' | 'bottom' | null;
+
+function clamp(value: number, min: number, max: number) {
+  return Math.min(max, Math.max(min, value));
+}
+
+function readLayoutPreference() {
+  try {
+    const raw = localStorage.getItem(LAYOUT_STORAGE_KEY);
+    if (!raw) return null;
+    const parsed = JSON.parse(raw) as { leftWidth?: unknown; rightWidth?: unknown; bottomHeight?: unknown };
+    const leftWidth = typeof parsed.leftWidth === 'number' ? parsed.leftWidth : null;
+    const rightWidth = typeof parsed.rightWidth === 'number' ? parsed.rightWidth : null;
+    const bottomHeight = typeof parsed.bottomHeight === 'number' ? parsed.bottomHeight : null;
+    if (leftWidth === null || rightWidth === null || bottomHeight === null) return null;
+    return { leftWidth, rightWidth, bottomHeight };
+  } catch {
+    return null;
+  }
+}
+
 export function App() {
   const sceneData = useSceneStore((state) => state.sceneData);
   const errorMsg = useSceneStore((state) => state.errorMsg);
@@ -23,6 +52,21 @@ export function App() {
   const scenePath = useRef('');
   const privateStateKey = useRef('');
   const privateStateLoaded = useRef(false);
+  const rootLayoutRef = useRef<HTMLDivElement | null>(null);
+  const topLayoutRef = useRef<HTMLElement | null>(null);
+  const dragStateRef = useRef<{
+    mode: DragMode;
+    startX: number;
+    startY: number;
+    startLeft: number;
+    startRight: number;
+    startBottom: number;
+  } | null>(null);
+
+  const layoutPrefRef = useRef(readLayoutPreference());
+  const [leftPaneWidth, setLeftPaneWidth] = React.useState(layoutPrefRef.current?.leftWidth ?? 240);
+  const [rightPaneWidth, setRightPaneWidth] = React.useState(layoutPrefRef.current?.rightWidth ?? 280);
+  const [bottomPaneHeight, setBottomPaneHeight] = React.useState(layoutPrefRef.current?.bottomHeight ?? 300);
 
   const getTabId = () => {
     const urlParams = new URLSearchParams(window.location.search);
@@ -86,6 +130,77 @@ export function App() {
   }, [privateNodeState]);
 
   useEffect(() => {
+    localStorage.setItem(
+      LAYOUT_STORAGE_KEY,
+      JSON.stringify({
+        leftWidth: leftPaneWidth,
+        rightWidth: rightPaneWidth,
+        bottomHeight: bottomPaneHeight
+      })
+    );
+  }, [bottomPaneHeight, leftPaneWidth, rightPaneWidth]);
+
+  useEffect(() => {
+    const onMouseMove = (e: MouseEvent) => {
+      const dragState = dragStateRef.current;
+      if (!dragState) return;
+
+      if (dragState.mode === 'left') {
+        const topWidth = topLayoutRef.current?.clientWidth || 0;
+        if (topWidth <= 0) return;
+        const maxLeft = Math.max(LEFT_MIN_WIDTH, topWidth - dragState.startRight - CENTER_MIN_WIDTH - RESIZER_SIZE * 2);
+        const next = clamp(dragState.startLeft + (e.clientX - dragState.startX), LEFT_MIN_WIDTH, maxLeft);
+        setLeftPaneWidth(next);
+        return;
+      }
+
+      if (dragState.mode === 'right') {
+        const topWidth = topLayoutRef.current?.clientWidth || 0;
+        if (topWidth <= 0) return;
+        const maxRight = Math.max(RIGHT_MIN_WIDTH, topWidth - dragState.startLeft - CENTER_MIN_WIDTH - RESIZER_SIZE * 2);
+        const next = clamp(dragState.startRight - (e.clientX - dragState.startX), RIGHT_MIN_WIDTH, maxRight);
+        setRightPaneWidth(next);
+        return;
+      }
+
+      if (dragState.mode === 'bottom') {
+        const rootHeight = rootLayoutRef.current?.clientHeight || 0;
+        if (rootHeight <= 0) return;
+        const maxBottom = Math.max(BOTTOM_MIN_HEIGHT, rootHeight - TOP_MIN_HEIGHT - RESIZER_SIZE);
+        const next = clamp(dragState.startBottom - (e.clientY - dragState.startY), BOTTOM_MIN_HEIGHT, maxBottom);
+        setBottomPaneHeight(next);
+      }
+    };
+
+    const onMouseUp = () => {
+      dragStateRef.current = null;
+      document.body.style.userSelect = '';
+      document.body.style.cursor = '';
+    };
+
+    window.addEventListener('mousemove', onMouseMove);
+    window.addEventListener('mouseup', onMouseUp);
+    return () => {
+      window.removeEventListener('mousemove', onMouseMove);
+      window.removeEventListener('mouseup', onMouseUp);
+    };
+  }, []);
+
+  const beginResize = (mode: Exclude<DragMode, null>) => (e: React.MouseEvent<HTMLDivElement>) => {
+    e.preventDefault();
+    dragStateRef.current = {
+      mode,
+      startX: e.clientX,
+      startY: e.clientY,
+      startLeft: leftPaneWidth,
+      startRight: rightPaneWidth,
+      startBottom: bottomPaneHeight
+    };
+    document.body.style.userSelect = 'none';
+    document.body.style.cursor = mode === 'bottom' ? 'row-resize' : 'col-resize';
+  };
+
+  useEffect(() => {
     window.parent.postMessage({ type: 'set-dirty', dirty: isDirty, tabId: getTabId() }, '*');
   }, [isDirty]);
 
@@ -145,8 +260,9 @@ export function App() {
 
   return (
     <div
+      ref={rootLayoutRef}
       style={{
-        display: 'flex',
+        position: 'relative',
         width: '100vw',
         height: '100vh',
         background: '#1e1e1e',
@@ -155,6 +271,16 @@ export function App() {
         overflow: 'hidden'
       }}
     >
+      <div
+        style={{
+          position: 'absolute',
+          inset: 0,
+          zIndex: 0
+        }}
+      >
+        <SceneCanvas sceneData={sceneData} />
+      </div>
+
       {errorMsg && (
         <div
           style={{
@@ -172,35 +298,140 @@ export function App() {
         </div>
       )}
 
-      <aside
+      <section
+        ref={topLayoutRef}
         style={{
-          width: 240,
-          borderRight: '1px solid #333',
-          background: '#252526'
+          position: 'absolute',
+          top: 0,
+          left: 0,
+          right: 0,
+          height: `calc(100% - ${bottomPaneHeight + RESIZER_SIZE}px)`,
+          display: 'flex',
+          minHeight: TOP_MIN_HEIGHT,
+          pointerEvents: 'none',
+          zIndex: 2
         }}
       >
-        <div style={{ padding: '10px 12px', fontSize: 12, color: '#c0c0c0', borderBottom: '1px solid #333' }}>
-          HIERARCHY
-        </div>
-        <HierarchyPanel />
-      </aside>
+        <aside
+          style={{
+            width: leftPaneWidth,
+            borderRight: '1px solid #333',
+            background: 'rgba(37, 37, 38, 0.96)',
+            backdropFilter: 'blur(2px)',
+            minHeight: 0,
+            display: 'flex',
+            flexDirection: 'column',
+            pointerEvents: 'auto'
+          }}
+        >
+          <div style={{ padding: '10px 12px', fontSize: 12, color: '#c0c0c0', borderBottom: '1px solid #333' }}>
+            HIERARCHY
+          </div>
+          <div style={{ minHeight: 0, flex: 1 }}>
+            <HierarchyPanel />
+          </div>
+        </aside>
 
-      <main style={{ flex: 1, position: 'relative' }}>
-        <SceneCanvas sceneData={sceneData} />
-      </main>
+        <div
+          onMouseDown={beginResize('left')}
+          style={{
+            width: RESIZER_SIZE,
+            cursor: 'col-resize',
+            background: '#2c2c2c',
+            borderLeft: '1px solid #242424',
+            borderRight: '1px solid #242424',
+            pointerEvents: 'auto'
+          }}
+        />
 
-      <aside
+        <div style={{ flex: 1, minWidth: 0 }} />
+
+        <div
+          onMouseDown={beginResize('right')}
+          style={{
+            width: RESIZER_SIZE,
+            cursor: 'col-resize',
+            background: '#2c2c2c',
+            borderLeft: '1px solid #242424',
+            borderRight: '1px solid #242424',
+            pointerEvents: 'auto'
+          }}
+        />
+
+        <aside
+          style={{
+            width: rightPaneWidth,
+            borderLeft: '1px solid #333',
+            background: 'rgba(37, 37, 38, 0.96)',
+            backdropFilter: 'blur(2px)',
+            minHeight: 0,
+            display: 'flex',
+            flexDirection: 'column',
+            pointerEvents: 'auto'
+          }}
+        >
+          <div style={{ padding: '10px 12px', fontSize: 12, color: '#c0c0c0', borderBottom: '1px solid #333' }}>
+            INSPECTOR
+          </div>
+          <div style={{ minHeight: 0, flex: 1 }}>
+            <InspectorPanel />
+          </div>
+        </aside>
+      </section>
+
+      <div
+        onMouseDown={beginResize('bottom')}
         style={{
-          width: 280,
-          borderLeft: '1px solid #333',
-          background: '#252526'
+          position: 'absolute',
+          left: 0,
+          right: 0,
+          top: `calc(100% - ${bottomPaneHeight + RESIZER_SIZE}px)`,
+          height: RESIZER_SIZE,
+          cursor: 'row-resize',
+          background: '#2c2c2c',
+          borderTop: '1px solid #242424',
+          borderBottom: '1px solid #242424',
+          zIndex: 2
+        }}
+      />
+
+      <section
+        style={{
+          position: 'absolute',
+          left: 0,
+          right: 0,
+          bottom: 0,
+          height: bottomPaneHeight,
+          minHeight: BOTTOM_MIN_HEIGHT,
+          background: 'linear-gradient(180deg, rgba(32,33,36,0.96) 0%, rgba(24,25,27,0.96) 100%)',
+          backdropFilter: 'blur(2px)',
+          display: 'flex',
+          flexDirection: 'column',
+          zIndex: 2
         }}
       >
-        <div style={{ padding: '10px 12px', fontSize: 12, color: '#c0c0c0', borderBottom: '1px solid #333' }}>
-          INSPECTOR
+        <div
+          style={{
+            padding: '10px 12px',
+            fontSize: 12,
+            color: '#c0c0c0',
+            borderBottom: '1px solid #333',
+            letterSpacing: 0.4
+          }}
+        >
+          ASSET EXPLORER
         </div>
-        <InspectorPanel />
-      </aside>
+        <div
+          style={{
+            flex: 1,
+            minHeight: 0,
+            margin: 12,
+            border: '1px dashed #3f4147',
+            borderRadius: 6,
+            background: 'rgba(255,255,255,0.02)'
+          }}
+        />
+      </section>
     </div>
   );
 }
