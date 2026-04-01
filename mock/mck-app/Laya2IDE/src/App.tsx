@@ -2,6 +2,7 @@ import React, { useEffect, useRef } from 'react';
 import { SceneCanvas } from './components/Viewport/SceneCanvas';
 import { HierarchyPanel } from './components/Hierarchy/HierarchyPanel';
 import { InspectorPanel } from './components/Inspector/InspectorPanel';
+import { AssetExplorerPanel } from './components/AssetExplorer/AssetExplorerPanel';
 import { formatSceneForSave } from './utils/sceneFormatter';
 import { preloadImages } from './utils/sceneUtils';
 import { useSceneStore } from './store/sceneStore';
@@ -395,43 +396,7 @@ export function App() {
         }}
       />
 
-      <section
-        style={{
-          position: 'absolute',
-          left: 0,
-          right: 0,
-          bottom: 0,
-          height: bottomPaneHeight,
-          minHeight: BOTTOM_MIN_HEIGHT,
-          background: 'linear-gradient(180deg, rgba(32,33,36,0.96) 0%, rgba(24,25,27,0.96) 100%)',
-          backdropFilter: 'blur(2px)',
-          display: 'flex',
-          flexDirection: 'column',
-          zIndex: 2
-        }}
-      >
-        <div
-          style={{
-            padding: '10px 12px',
-            fontSize: 12,
-            color: '#c0c0c0',
-            borderBottom: '1px solid #333',
-            letterSpacing: 0.4
-          }}
-        >
-          ASSET EXPLORER
-        </div>
-        <div
-          style={{
-            flex: 1,
-            minHeight: 0,
-            margin: 12,
-            border: '1px dashed #3f4147',
-            borderRadius: 6,
-            background: 'rgba(255,255,255,0.02)'
-          }}
-        />
-      </section>
+      <AssetExplorerPanel height={bottomPaneHeight} minHeight={BOTTOM_MIN_HEIGHT} />
     </div>
   );
 }
