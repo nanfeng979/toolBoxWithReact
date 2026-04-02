@@ -6,6 +6,7 @@ import { AssetExplorerPanel } from './components/AssetExplorer/AssetExplorerPane
 import { formatSceneForSave } from './utils/sceneFormatter';
 import { preloadImages } from './utils/sceneUtils';
 import { useSceneStore } from './store/sceneStore';
+import { SceneNode } from './types/scene';
 
 const LAYOUT_STORAGE_KEY = 'laya2ide.layout.v1';
 const LEFT_MIN_WIDTH = 180;
@@ -68,6 +69,7 @@ export function App() {
   const [leftPaneWidth, setLeftPaneWidth] = React.useState(layoutPrefRef.current?.leftWidth ?? 240);
   const [rightPaneWidth, setRightPaneWidth] = React.useState(layoutPrefRef.current?.rightWidth ?? 280);
   const [bottomPaneHeight, setBottomPaneHeight] = React.useState(layoutPrefRef.current?.bottomHeight ?? 300);
+  const [sceneFilePath, setSceneFilePath] = React.useState('');
 
   const getTabId = () => {
     const urlParams = new URLSearchParams(window.location.search);
@@ -86,6 +88,7 @@ export function App() {
       try {
         const payloadObj = JSON.parse(decodeURIComponent(rawPayload));
         originalFilePath.current = payloadObj.filePath;
+        setSceneFilePath(payloadObj.filePath);
         const normPath = originalFilePath.current.replace(/\\/g, '/');
         scenePath.current = normPath.match(/^[a-zA-Z]:\//) ? '/' + normPath : normPath;
 
@@ -396,7 +399,12 @@ export function App() {
         }}
       />
 
-      <AssetExplorerPanel height={bottomPaneHeight} minHeight={BOTTOM_MIN_HEIGHT} />
+      <AssetExplorerPanel
+        height={bottomPaneHeight}
+        minHeight={BOTTOM_MIN_HEIGHT}
+        sceneFilePath={sceneFilePath}
+        sceneData={sceneData as SceneNode | null}
+      />
     </div>
   );
 }

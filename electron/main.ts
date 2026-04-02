@@ -354,11 +354,16 @@ app.whenReady().then(() => {
     try {
       const entries = await fs.readdir(dirPath, { withFileTypes: true });
       return entries
-        .filter(e => !e.isDirectory())
-        .map(e => ({
+        .filter((e) => !e.name.startsWith('.'))
+        .map((e) => ({
           name: e.name,
-          path: path.join(dirPath, e.name)
-        }));
+          path: path.join(dirPath, e.name),
+          isDirectory: e.isDirectory()
+        }))
+        .sort((a, b) => {
+          if (a.isDirectory === b.isDirectory) return a.name.localeCompare(b.name);
+          return a.isDirectory ? -1 : 1;
+        });
     } catch (err) {
       console.error('Failed to read dir:', err);
       return [];
