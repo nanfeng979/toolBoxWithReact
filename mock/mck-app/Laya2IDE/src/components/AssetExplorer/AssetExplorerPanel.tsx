@@ -1,323 +1,29 @@
-import React from 'react';
-import { SceneNode } from '../../types/scene';
-
-interface AssetExplorerPanelProps {
-  height: number;
-  minHeight: number;
-  sceneFilePath: string;
-  sceneData: SceneNode | null;
-}
-
-interface HostApiEntryItem {
-  name: string;
-  path: string;
-  isDirectory: boolean;
-}
-
-interface DirWatchChange {
-  op: 'add' | 'remove' | 'update';
-  path: string;
-  entry?: HostApiEntryItem;
-}
-
-interface DirWatchPayload {
-  watchId: string;
-  dirPath: string;
-  mode: 'delta' | 'reset';
-  changes?: DirWatchChange[];
-  entries?: HostApiEntryItem[];
-}
-
-interface WatchResult {
-  success: boolean;
-  error?: string;
-}
-
-interface FolderOption {
-  key: string;
-  label: string;
-  path: string;
-}
-
-interface AssetExplorerPanelState {
-  projectFolderOptions: FolderOption[];
-  projectTemporaryFolderOptions: FolderOption[];
-  selectedProjectFolderKey: string;
-  projectRootPath: string;
-  projectCurrentPath: string;
-  projectEntries: HostApiEntryItem[];
-  projectLoading: boolean;
-  projectPaneWidth: number;
-  externalFolders: FolderOption[];
-  selectedExternalFolderKey: string;
-  externalRootPath: string;
-  externalCurrentPath: string;
-  externalEntries: HostApiEntryItem[];
-  externalLoading: boolean;
-  lastError: string;
-}
-
-const IMAGE_EXTENSIONS = new Set(['.png', '.jpg', '.jpeg', '.webp', '.gif']);
-const ASSET_EXPLORER_LAYOUT_STORAGE_KEY = 'laya2ide.asset-explorer.layout.v1';
-const DEFAULT_PROJECT_PANE_WIDTH = 0;
-const PROJECT_WATCH_ID = 'asset-explorer-project';
-const EXTERNAL_WATCH_ID = 'asset-explorer-external';
-
-function normalizeSlashes(input: string) {
-  return input.replace(/\\/g, '/');
-}
-
-function trimTrailingSlash(input: string) {
-  return input.replace(/\/+$/g, '');
-}
-
-function joinPath(base: string, next: string) {
-  const normalizedBase = trimTrailingSlash(normalizeSlashes(base));
-  const normalizedNext = next.replace(/^\/+/, '');
-  return `${normalizedBase}/${normalizedNext}`;
-}
-
-function dirname(input: string) {
-  const normalized = trimTrailingSlash(normalizeSlashes(input));
-  const idx = normalized.lastIndexOf('/');
-  if (idx < 0) return '';
-  if (idx === 0) return '/';
-  return normalized.slice(0, idx);
-}
-
-function basename(input: string) {
-  const normalized = trimTrailingSlash(normalizeSlashes(input));
-  const idx = normalized.lastIndexOf('/');
-  return idx >= 0 ? normalized.slice(idx + 1) : normalized;
-}
-
-function extname(fileName: string) {
-  const idx = fileName.lastIndexOf('.');
-  if (idx < 0) return '';
-  return fileName.slice(idx).toLowerCase();
-}
-
-function stripExt(fileName: string) {
-  const idx = fileName.lastIndexOf('.');
-  if (idx < 0) return fileName;
-  return fileName.slice(0, idx);
-}
-
-function normalizeForCompare(input: string) {
-  return normalizeSlashes(input).toLowerCase();
-}
-
-function isWithinRoot(targetPath: string, rootPath: string) {
-  const target = normalizeForCompare(trimTrailingSlash(targetPath));
-  const root = normalizeForCompare(trimTrailingSlash(rootPath));
-  return target === root || target.startsWith(`${root}/`);
-}
-
-function canGoParent(currentPath: string, rootPath: string) {
-  if (!currentPath || !rootPath) return false;
-  return normalizeForCompare(trimTrailingSlash(currentPath)) !== normalizeForCompare(trimTrailingSlash(rootPath));
-}
-
-function toAssetUrl(absPath: string) {
-  const normalized = normalizeSlashes(absPath).replace(/^\/+/, '');
-  return `asset://local/${encodeURI(normalized)}`;
-}
-
-function findLayaAssetsFolder(sceneFilePath: string) {
-  if (!sceneFilePath) return '';
-  const normalized = normalizeSlashes(sceneFilePath);
-  const parts = normalized.split('/').filter((p) => p.length > 0);
-
-  for (let i = parts.length - 1; i >= 0; i -= 1) {
-    if (parts[i].toLowerCase() === 'laya') {
-      const prefix = parts.slice(0, i + 1).join('/');
-      const hasDrive = /^[a-zA-Z]:$/.test(parts[0]);
-      const root = hasDrive ? prefix : `/${prefix}`;
-      return `${root}/assets`;
-    }
-  }
-
-  return '';
-}
-
-function toProjectTemporaryFolderKey(path: string) {
-  return `tmp:${normalizeSlashes(path)}`;
-}
-
-function getProjectRelativePath(rootPath: string, targetPath: string) {
-  const root = trimTrailingSlash(normalizeSlashes(rootPath));
-  const target = trimTrailingSlash(normalizeSlashes(targetPath));
-  if (!root || !target) return '';
-  if (normalizeForCompare(root) === normalizeForCompare(target)) return '';
-  const prefix = `${root}/`;
-  if (!normalizeForCompare(target).startsWith(normalizeForCompare(prefix))) return '';
-  return target.slice(prefix.length);
-}
-
-function buildBreadcrumbItems(rootPath: string, currentPath: string) {
-  if (!rootPath || !currentPath || !isWithinRoot(currentPath, rootPath)) return [] as Array<{ label: string; path: string }>;
-
-  const items: Array<{ label: string; path: string }> = [{ label: 'assets', path: rootPath }];
-  const relative = getProjectRelativePath(rootPath, currentPath);
-  if (!relative) return items;
-
-  const segments = relative.split('/').filter(Boolean);
-  let walkPath = rootPath;
-  for (const seg of segments) {
-    walkPath = joinPath(walkPath, seg);
-    items.push({ label: seg, path: walkPath });
-  }
-  return items;
-}
-
-function estimateBreadcrumbWidth(label: string) {
-  return Math.max(44, label.length * 8 + 22);
-}
-
-function getVisibleBreadcrumbItems(items: Array<{ label: string; path: string }>, availableWidth: number) {
-  if (!items.length) return [] as Array<{ label: string; path: string }>;
-
-  const gapWidth = 6;
-  const ellipsisWidth = 24;
-  let totalWidth = 0;
-  const widths = items.map((item) => estimateBreadcrumbWidth(item.label));
-
-  for (let i = 0; i < widths.length; i += 1) {
-    totalWidth += widths[i];
-    if (i > 0) totalWidth += gapWidth;
-  }
-
-  if (totalWidth <= availableWidth) return items;
-
-  let startIndex = 0;
-  let usedWidth = ellipsisWidth;
-
-  for (let i = widths.length - 1; i >= 0; i -= 1) {
-    const nextWidth = widths[i] + (usedWidth > ellipsisWidth ? gapWidth : 0);
-    if (usedWidth + nextWidth > availableWidth) break;
-    usedWidth += nextWidth;
-    startIndex = i;
-  }
-
-  return items.slice(startIndex);
-}
-
-function renderBreadcrumbButtons(items: Array<{ label: string; path: string }>, onClick: (path: string) => void) {
-  if (!items.length) return null;
-
-  return (
-    <div
-      style={{
-        display: 'flex',
-        alignItems: 'center',
-        gap: 4,
-        minWidth: 0,
-        overflowX: 'auto',
-        whiteSpace: 'nowrap'
-      }}
-    >
-      {items.map((item, index) => (
-        <React.Fragment key={item.path}>
-          {index > 0 && <span style={{ color: '#66707c' }}>/</span>}
-          <button
-            type="button"
-            onClick={() => onClick(item.path)}
-            style={{
-              background: 'transparent',
-              border: 'none',
-              color: '#9cb2ce',
-              padding: 0,
-              cursor: 'pointer',
-              fontSize: 11,
-              flex: '0 0 auto'
-            }}
-            title={item.path}
-          >
-            {item.label}
-          </button>
-        </React.Fragment>
-      ))}
-    </div>
-  );
-}
-
-function getNormalizedWidth(value: number, minWidth: number, maxWidth: number) {
-  if (!Number.isFinite(value) || value <= 0) return minWidth;
-  return Math.max(minWidth, Math.min(maxWidth, value));
-}
-
-function sortEntries(entries: HostApiEntryItem[]) {
-  return [...entries].sort((a, b) => {
-    if (a.isDirectory === b.isDirectory) return a.name.localeCompare(b.name);
-    return a.isDirectory ? -1 : 1;
-  });
-}
-
-function applyDirChanges(entries: HostApiEntryItem[], changes: DirWatchChange[]) {
-  const map = new Map<string, HostApiEntryItem>();
-  entries.forEach((entry) => {
-    map.set(normalizeForCompare(entry.path), entry);
-  });
-
-  changes.forEach((change) => {
-    const key = normalizeForCompare(change.path);
-    if (change.op === 'remove') {
-      map.delete(key);
-      return;
-    }
-
-    if (change.entry) {
-      map.set(normalizeForCompare(change.entry.path), change.entry);
-    }
-  });
-
-  return sortEntries([...map.values()]);
-}
-
-function readAssetExplorerLayoutPreference() {
-  try {
-    const raw = localStorage.getItem(ASSET_EXPLORER_LAYOUT_STORAGE_KEY);
-    if (!raw) return null;
-    const parsed = JSON.parse(raw) as { projectPaneWidth?: unknown };
-    return typeof parsed.projectPaneWidth === 'number' ? parsed.projectPaneWidth : null;
-  } catch {
-    return null;
-  }
-}
-
-function saveAssetExplorerLayoutPreference(projectPaneWidth: number) {
-  try {
-    localStorage.setItem(
-      ASSET_EXPLORER_LAYOUT_STORAGE_KEY,
-      JSON.stringify({ projectPaneWidth })
-    );
-  } catch {
-    // Ignore storage failures.
-  }
-}
-
-function collectSkinFolders(sceneNode: SceneNode | null) {
-  const folders = new Set<string>();
-  const visit = (node: SceneNode | null) => {
-    if (!node) return;
-    const props = node.props || {};
-    const isImageLike = node.type === 'Image' || node.type === 'Sprite';
-    const skin = isImageLike && typeof props.skin === 'string' ? props.skin.trim() : '';
-    if (skin) {
-      const folder = dirname(skin);
-      if (folder && folder !== '.' && folder !== '/') {
-        folders.add(folder.replace(/^\/+/, ''));
-      }
-    }
-
-    if (Array.isArray(node.child)) {
-      node.child.forEach((child) => visit(child));
-    }
-  };
-
-  visit(sceneNode);
-  return [...folders].sort((a, b) => a.localeCompare(b));
-}
+﻿import React from 'react';
+import { AssetBreadcrumbArea } from './AssetBreadcrumbArea';
+import { AssetEntryGrid } from './AssetEntryGrid';
+import { AssetFunctionPanel } from './AssetFunctionPanel';
+import { DEFAULT_PROJECT_PANE_WIDTH, EXTERNAL_WATCH_ID, PROJECT_WATCH_ID } from './assetExplorerConstants';
+import { applyDirChanges, collectSkinFolders, sortEntries } from './assetExplorerEntryUtils';
+import {
+  basename,
+  findLayaAssetsFolder,
+  getNormalizedWidth,
+  getProjectRelativePath,
+  isWithinRoot,
+  joinPath,
+  normalizeForCompare,
+  normalizeSlashes,
+  toProjectTemporaryFolderKey
+} from './assetExplorerPathUtils';
+import { readAssetExplorerLayoutPreference, saveAssetExplorerLayoutPreference } from './assetExplorerStorage';
+import {
+  AssetExplorerHostApi,
+  AssetExplorerPanelProps,
+  AssetExplorerPanelState,
+  DirWatchPayload,
+  FolderOption,
+  WatchResult
+} from './AssetExplorerTypes';
 
 export class AssetExplorerPanel extends React.PureComponent<AssetExplorerPanelProps, AssetExplorerPanelState> {
   private projectHeaderRef = React.createRef<HTMLDivElement>();
@@ -546,23 +252,7 @@ export class AssetExplorerPanel extends React.PureComponent<AssetExplorerPanelPr
   }
 
   getHostApi() {
-    return (window as Window & {
-      hostApi?: {
-        openDirectoryDialog?: () => Promise<string | null>;
-        readDirectoryFiles?: (dirPath: string) => Promise<HostApiEntryItem[]>;
-        watchDirectory?: (watchId: string, dirPath: string) => Promise<WatchResult>;
-        unwatchDirectory?: (watchId: string) => Promise<WatchResult>;
-        onDirectoryChanged?: (listener: (payload: unknown) => void) => () => void;
-      };
-    }).hostApi as
-      | {
-          openDirectoryDialog?: () => Promise<string | null>;
-          readDirectoryFiles?: (dirPath: string) => Promise<HostApiEntryItem[]>;
-          watchDirectory?: (watchId: string, dirPath: string) => Promise<WatchResult>;
-          unwatchDirectory?: (watchId: string) => Promise<WatchResult>;
-          onDirectoryChanged?: (listener: (payload: unknown) => void) => () => void;
-        }
-      | undefined;
+    return (window as Window & { hostApi?: AssetExplorerHostApi }).hostApi;
   }
 
   buildProjectFolderOptions() {
@@ -594,10 +284,7 @@ export class AssetExplorerPanel extends React.PureComponent<AssetExplorerPanelPr
     if (!hostApi?.readDirectoryFiles) return [];
 
     const entries = await hostApi.readDirectoryFiles(folderPath);
-    return [...entries].sort((a, b) => {
-      if (a.isDirectory === b.isDirectory) return a.name.localeCompare(b.name);
-      return a.isDirectory ? -1 : 1;
-    });
+    return sortEntries(entries);
   }
 
   async reloadProjectFolders() {
@@ -824,112 +511,6 @@ export class AssetExplorerPanel extends React.PureComponent<AssetExplorerPanelPr
     });
   };
 
-  renderEntryGrid(
-    entries: HostApiEntryItem[],
-    loading: boolean,
-    emptyLabel: string,
-    currentPath: string,
-    rootPath: string,
-    onOpenFolder: (path: string) => void
-  ) {
-    if (loading) {
-      return <div style={{ padding: 12, color: '#8d8d8d', fontSize: 12 }}>加载中...</div>;
-    }
-
-    const canBack = canGoParent(currentPath, rootPath);
-    const displayEntries: Array<HostApiEntryItem | { name: '..'; path: string; isDirectory: true; isParent: true }> = [];
-    if (canBack) {
-      displayEntries.push({ name: '..', path: dirname(currentPath), isDirectory: true, isParent: true });
-    }
-    displayEntries.push(...entries);
-
-    if (!displayEntries.length) {
-      return <div style={{ padding: 12, color: '#8d8d8d', fontSize: 12 }}>{emptyLabel}</div>;
-    }
-
-    return (
-      <div
-        style={{
-          padding: 10,
-          display: 'grid',
-          gridTemplateColumns: 'repeat(auto-fill, 104px)',
-          gridAutoRows: '124px',
-          justifyContent: 'start',
-          alignContent: 'start',
-          alignItems: 'start',
-          gap: 10,
-          overflow: 'auto',
-          minHeight: 0,
-          flex: 1
-        }}
-      >
-        {displayEntries.map((item) => {
-          const isParentEntry = (item as { isParent?: boolean }).isParent === true;
-          const extension = item.isDirectory ? 'folder' : extname(item.name);
-          const isImageFile = !item.isDirectory && IMAGE_EXTENSIONS.has(extension);
-          return (
-            <div
-              key={`${item.path}:${item.name}`}
-              onDoubleClick={() => {
-                if (item.isDirectory) {
-                  onOpenFolder(item.path);
-                }
-              }}
-              style={{
-                border: '1px solid #3a3d43',
-                borderRadius: 6,
-                background: 'rgba(255,255,255,0.02)',
-                padding: 8,
-                display: 'flex',
-                flexDirection: 'column',
-                gap: 6,
-                cursor: item.isDirectory ? 'pointer' : 'default',
-                alignSelf: 'start'
-              }}
-              title={item.path}
-            >
-              <div
-                style={{
-                  height: 68,
-                  display: 'flex',
-                  alignItems: 'center',
-                  justifyContent: 'center',
-                  background: '#1a1b1f',
-                  border: '1px solid #2f3238',
-                  borderRadius: 4,
-                  overflow: 'hidden'
-                }}
-              >
-                {isImageFile ? (
-                  <img
-                    src={toAssetUrl(item.path)}
-                    alt={item.name}
-                    style={{
-                      maxWidth: '100%',
-                      maxHeight: '100%',
-                      objectFit: 'contain',
-                      display: 'block'
-                    }}
-                  />
-                ) : (
-                  <span style={{ fontSize: 26, color: item.isDirectory ? '#d7b76d' : '#90a8c8', lineHeight: 1 }}>
-                    {item.isDirectory ? '📁' : '📄'}
-                  </span>
-                )}
-              </div>
-              <div style={{ fontSize: 11, color: '#c9c9c9', lineHeight: 1.2 }}>
-                <div style={{ whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
-                  {isParentEntry ? '..' : stripExt(item.name)}
-                </div>
-                <div style={{ color: '#8d8d8d' }}>{isParentEntry ? 'parent' : extension || '(no ext)'}</div>
-              </div>
-            </div>
-          );
-        })}
-      </div>
-    );
-  }
-
   beginSplitDrag = (e: React.MouseEvent<HTMLDivElement>) => {
     if (!this.state.externalFolders.length) return;
     e.preventDefault();
@@ -940,64 +521,6 @@ export class AssetExplorerPanel extends React.PureComponent<AssetExplorerPanelPr
     document.body.style.userSelect = 'none';
     document.body.style.cursor = 'col-resize';
   };
-
-  renderBreadcrumbArea(
-    rootPath: string,
-    currentPath: string,
-    availableWidth: number,
-    onClick: (path: string) => void
-  ) {
-    const items = buildBreadcrumbItems(rootPath, currentPath);
-    const visible = getVisibleBreadcrumbItems(items, availableWidth);
-    return renderBreadcrumbButtons(visible, onClick);
-  }
-
-  renderFunctionPanel() {
-    return (
-      <div
-        ref={this.functionPanelRef}
-        style={{
-          flex: '0 0 auto',
-          width: 'max-content',
-          minWidth: 136,
-          display: 'flex',
-          flexDirection: 'column',
-          borderLeft: '1px solid #333',
-          background: 'rgba(31,32,35,0.96)'
-        }}
-      >
-        <div
-          style={{
-            padding: '10px 12px',
-            fontSize: 12,
-            color: '#c0c0c0',
-            borderBottom: '1px solid #333',
-            letterSpacing: 0.4
-          }}
-        >
-          功能区
-        </div>
-        <div style={{ display: 'flex', flexDirection: 'column', gap: 8, padding: 12 }}>
-          <button
-            type="button"
-            onClick={this.addExternalFolder}
-            style={{
-              background: '#2b2d33',
-              border: '1px solid #3b3d44',
-              color: '#d0d0d0',
-              borderRadius: 4,
-              fontSize: 12,
-              padding: '4px 10px',
-              cursor: 'pointer',
-              whiteSpace: 'nowrap'
-            }}
-          >
-            导入外部文件夹
-          </button>
-        </div>
-      </div>
-    );
-  }
 
   render() {
     const { height, minHeight } = this.props;
@@ -1099,24 +622,35 @@ export class AssetExplorerPanel extends React.PureComponent<AssetExplorerPanelPr
                 </select>
               </div>
               <div style={{ minWidth: 0, flex: '1 1 auto' }}>
-                {this.renderBreadcrumbArea(projectRootPath, projectCurrentPath, projectBreadcrumbWidth, this.onProjectBreadcrumbClick)}
+                <AssetBreadcrumbArea
+                  rootPath={projectRootPath}
+                  currentPath={projectCurrentPath}
+                  availableWidth={projectBreadcrumbWidth}
+                  onClick={this.onProjectBreadcrumbClick}
+                />
               </div>
             </div>
-            {this.renderEntryGrid(
-              projectEntries,
-              projectLoading,
-              '当前目录为空',
-              projectCurrentPath,
-              projectRootPath,
-              this.openProjectFolder
-            )}
+            <AssetEntryGrid
+              entries={projectEntries}
+              loading={projectLoading}
+              emptyLabel="当前目录为空"
+              currentPath={projectCurrentPath}
+              rootPath={projectRootPath}
+              onOpenFolder={this.openProjectFolder}
+            />
           </div>
 
           {hasExternalFolders && (
             <>
               <div
                 onMouseDown={this.beginSplitDrag}
-                style={{ width: 6, cursor: 'col-resize', background: 'rgba(255,255,255,0.04)', borderLeft: '1px solid #333', borderRight: '1px solid #333' }}
+                style={{
+                  width: 6,
+                  cursor: 'col-resize',
+                  background: 'rgba(255,255,255,0.04)',
+                  borderLeft: '1px solid #333',
+                  borderRight: '1px solid #333'
+                }}
               />
               <div style={{ flex: 1, minWidth: 0, display: 'flex', flexDirection: 'column' }}>
                 <div
@@ -1152,7 +686,12 @@ export class AssetExplorerPanel extends React.PureComponent<AssetExplorerPanelPr
                     </select>
                   </div>
                   <div style={{ minWidth: 0, flex: '1 1 auto' }}>
-                    {this.renderBreadcrumbArea(externalRootPath, externalCurrentPath, externalBreadcrumbWidth, this.openExternalFolder)}
+                    <AssetBreadcrumbArea
+                      rootPath={externalRootPath}
+                      currentPath={externalCurrentPath}
+                      availableWidth={externalBreadcrumbWidth}
+                      onClick={this.openExternalFolder}
+                    />
                   </div>
                   <div style={{ flex: '0 0 auto' }}>
                     <button
@@ -1173,19 +712,19 @@ export class AssetExplorerPanel extends React.PureComponent<AssetExplorerPanelPr
                     </button>
                   </div>
                 </div>
-                {this.renderEntryGrid(
-                  externalEntries,
-                  externalLoading,
-                  '当前目录为空',
-                  externalCurrentPath,
-                  externalRootPath,
-                  this.openExternalFolder
-                )}
+                <AssetEntryGrid
+                  entries={externalEntries}
+                  loading={externalLoading}
+                  emptyLabel="当前目录为空"
+                  currentPath={externalCurrentPath}
+                  rootPath={externalRootPath}
+                  onOpenFolder={this.openExternalFolder}
+                />
               </div>
             </>
           )}
 
-          {this.renderFunctionPanel()}
+          <AssetFunctionPanel ref={this.functionPanelRef} onAddExternalFolder={this.addExternalFolder} />
         </div>
 
         {lastError && (
