@@ -2,6 +2,7 @@ import { app, BrowserWindow, ipcMain, protocol, net, webFrameMain, Notification,
 import { fileURLToPath, pathToFileURL } from 'node:url'
 import path from 'node:path'
 import fs from 'node:fs/promises'
+import { watch as fsWatch, type FSWatcher } from 'node:fs'
 import { MiniAppService } from './services/miniAppService'
 import { PluginService } from './services/pluginService'
 import { ExplorerService } from './services/explorerService'
@@ -219,6 +220,146 @@ app.whenReady().then(() => {
     return path.join(app.getPath('userData'), 'miniapp-private', `${appId}.json`);
   };
 
+  type DirEntry = {
+    name: string;
+    path: string;
+    isDirectory: boolean;
+  };
+
+  type DirChange = {
+    op: 'add' | 'remove' | 'update';
+    path: string;
+    entry?: DirEntry;
+  };
+
+  type DirWatchEventPayload = {
+    watchId: string;
+    dirPath: string;
+    mode: 'delta' | 'reset';
+    changes?: DirChange[];
+    entries?: DirEntry[];
+  };
+
+  type DirWatchSession = {
+    key: string;
+    senderId: number;
+    frameProcessId: number;
+    frameRoutingId: number;
+    watchId: string;
+    dirPath: string;
+    watcher: FSWatcher;
+    timer: NodeJS.Timeout | null;
+    entriesMap: Map<string, DirEntry>;
+    changedNames: Set<string>;
+  };
+
+  const dirWatchSessions = new Map<string, DirWatchSession>();
+
+  const normalizeEntryPath = (targetPath: string) => path.resolve(targetPath).toLowerCase();
+  const sessionKeyOf = (senderId: number, watchId: string) => `${senderId}::${watchId}`;
+
+  const listDirEntries = async (dirPath: string): Promise<DirEntry[]> => {
+    const entries = await fs.readdir(dirPath, { withFileTypes: true });
+    return entries
+      .filter((entry) => !entry.name.startsWith('.'))
+      .map((entry) => ({
+        name: entry.name,
+        path: path.join(dirPath, entry.name),
+        isDirectory: entry.isDirectory()
+      }))
+      .sort((a, b) => {
+        if (a.isDirectory === b.isDirectory) return a.name.localeCompare(b.name);
+        return a.isDirectory ? -1 : 1;
+      });
+  };
+
+  const toEntryMap = (entries: DirEntry[]) => {
+    const next = new Map<string, DirEntry>();
+    entries.forEach((entry) => {
+      next.set(normalizeEntryPath(entry.path), entry);
+    });
+    return next;
+  };
+
+  const emitDirWatchPayload = (session: DirWatchSession, payload: DirWatchEventPayload) => {
+    const target = BrowserWindow.getAllWindows().find((w) => w.webContents.id === session.senderId)?.webContents;
+    if (target && !target.isDestroyed()) {
+      if (session.frameProcessId > 0 && session.frameRoutingId > 0) {
+        try {
+          target.sendToFrame([session.frameProcessId, session.frameRoutingId], 'host:dir-changed', payload);
+          return;
+        } catch {
+          // Fallback to top frame delivery below.
+        }
+      }
+      target.send('host:dir-changed', payload);
+    }
+  };
+
+  const closeDirWatchSession = (sessionKey: string) => {
+    const session = dirWatchSessions.get(sessionKey);
+    if (!session) return;
+    if (session.timer) {
+      clearTimeout(session.timer);
+      session.timer = null;
+    }
+    session.watcher.close();
+    dirWatchSessions.delete(sessionKey);
+  };
+
+  const flushDirWatchSession = async (sessionKey: string) => {
+    const session = dirWatchSessions.get(sessionKey);
+    if (!session) return;
+
+    session.timer = null;
+    try {
+      const nextEntries = await listDirEntries(session.dirPath);
+      const nextMap = toEntryMap(nextEntries);
+      const changes: DirChange[] = [];
+
+      session.entriesMap.forEach((oldEntry, key) => {
+        if (!nextMap.has(key)) {
+          changes.push({ op: 'remove', path: oldEntry.path });
+        }
+      });
+
+      nextMap.forEach((newEntry, key) => {
+        if (!session.entriesMap.has(key)) {
+          changes.push({ op: 'add', path: newEntry.path, entry: newEntry });
+        }
+      });
+
+      session.changedNames.forEach((name) => {
+        const changedPath = normalizeEntryPath(path.join(session.dirPath, name));
+        if (nextMap.has(changedPath) && session.entriesMap.has(changedPath)) {
+          changes.push({ op: 'update', path: nextMap.get(changedPath)!.path, entry: nextMap.get(changedPath)! });
+        }
+      });
+
+      session.changedNames.clear();
+
+      if (changes.length > 0) {
+        emitDirWatchPayload(session, {
+          watchId: session.watchId,
+          dirPath: session.dirPath,
+          mode: 'delta',
+          changes
+        });
+      }
+
+      session.entriesMap = nextMap;
+    } catch {
+      session.changedNames.clear();
+      session.entriesMap = new Map();
+      emitDirWatchPayload(session, {
+        watchId: session.watchId,
+        dirPath: session.dirPath,
+        mode: 'reset',
+        entries: []
+      });
+    }
+  };
+
   const readMiniAppPrivateStore = async (appId: string): Promise<Record<string, unknown>> => {
     const filePath = getMiniAppPrivateFilePath(appId);
     try {
@@ -352,22 +493,74 @@ app.whenReady().then(() => {
 
   ipcMain.handle('host:read-dir', async (_, dirPath: string) => {
     try {
-      const entries = await fs.readdir(dirPath, { withFileTypes: true });
-      return entries
-        .filter((e) => !e.name.startsWith('.'))
-        .map((e) => ({
-          name: e.name,
-          path: path.join(dirPath, e.name),
-          isDirectory: e.isDirectory()
-        }))
-        .sort((a, b) => {
-          if (a.isDirectory === b.isDirectory) return a.name.localeCompare(b.name);
-          return a.isDirectory ? -1 : 1;
-        });
+      return await listDirEntries(dirPath);
     } catch (err) {
       console.error('Failed to read dir:', err);
       return [];
     }
+  });
+
+  ipcMain.handle('host:watch-dir', async (event, watchId: string, dirPath: string) => {
+    if (!watchId || !dirPath) return { success: false, error: 'invalid args' };
+
+    const key = sessionKeyOf(event.sender.id, watchId);
+    closeDirWatchSession(key);
+
+    try {
+      const initialEntries = await listDirEntries(dirPath);
+      const frameProcessId = event.senderFrame?.processId || 0;
+      const frameRoutingId = event.senderFrame?.routingId || 0;
+      const session: DirWatchSession = {
+        key,
+        senderId: event.sender.id,
+        frameProcessId,
+        frameRoutingId,
+        watchId,
+        dirPath,
+        watcher: fsWatch(dirPath, { persistent: false }, (_eventType, filename) => {
+          const live = dirWatchSessions.get(key);
+          if (!live) return;
+
+          if (filename) {
+            live.changedNames.add(String(filename));
+          }
+
+          if (live.timer) {
+            clearTimeout(live.timer);
+          }
+          live.timer = setTimeout(() => {
+            void flushDirWatchSession(key);
+          }, 80);
+        }),
+        timer: null,
+        entriesMap: toEntryMap(initialEntries),
+        changedNames: new Set<string>()
+      };
+
+      session.watcher.on('error', () => {
+        emitDirWatchPayload(session, {
+          watchId: session.watchId,
+          dirPath: session.dirPath,
+          mode: 'reset',
+          entries: []
+        });
+      });
+
+      dirWatchSessions.set(key, session);
+      return { success: true };
+    } catch (err: unknown) {
+      return {
+        success: false,
+        error: err instanceof Error ? err.message : String(err)
+      };
+    }
+  });
+
+  ipcMain.handle('host:unwatch-dir', (event, watchId: string) => {
+    if (!watchId) return { success: false, error: 'invalid watch id' };
+    const key = sessionKeyOf(event.sender.id, watchId);
+    closeDirWatchSession(key);
+    return { success: true };
   });
 
   ipcMain.handle('host:copy-file', async (_, srcPath: string, destPath: string) => {

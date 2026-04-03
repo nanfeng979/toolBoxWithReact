@@ -8,6 +8,13 @@ if (window.location.protocol === 'miniapp:') {
     openFileDialog: () => ipcRenderer.invoke('host:open-file-dialog'),
     openDirectoryDialog: () => ipcRenderer.invoke('host:open-directory'),
     readDirectoryFiles: (dirPath: string) => ipcRenderer.invoke('host:read-dir', dirPath),
+    watchDirectory: (watchId: string, dirPath: string) => ipcRenderer.invoke('host:watch-dir', watchId, dirPath),
+    unwatchDirectory: (watchId: string) => ipcRenderer.invoke('host:unwatch-dir', watchId),
+    onDirectoryChanged: (listener: (payload: unknown) => void) => {
+      const wrapped = (_event: Electron.IpcRendererEvent, payload: unknown) => listener(payload);
+      ipcRenderer.on('host:dir-changed', wrapped);
+      return () => ipcRenderer.off('host:dir-changed', wrapped);
+    },
     copyFile: (srcPath: string, destPath: string) => ipcRenderer.invoke('host:copy-file', srcPath, destPath),
     getThemeColor: () => ipcRenderer.invoke('host:get-theme-color'),
     getPrivateState: (appId: string, key: string) => ipcRenderer.invoke('host:private-state:get', appId, key),

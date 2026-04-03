@@ -14,6 +14,25 @@ interface HostApiEntryItem {
   isDirectory: boolean;
 }
 
+interface DirWatchChange {
+  op: 'add' | 'remove' | 'update';
+  path: string;
+  entry?: HostApiEntryItem;
+}
+
+interface DirWatchPayload {
+  watchId: string;
+  dirPath: string;
+  mode: 'delta' | 'reset';
+  changes?: DirWatchChange[];
+  entries?: HostApiEntryItem[];
+}
+
+interface WatchResult {
+  success: boolean;
+  error?: string;
+}
+
 interface FolderOption {
   key: string;
   label: string;
@@ -41,6 +60,8 @@ interface AssetExplorerPanelState {
 const IMAGE_EXTENSIONS = new Set(['.png', '.jpg', '.jpeg', '.webp', '.gif']);
 const ASSET_EXPLORER_LAYOUT_STORAGE_KEY = 'laya2ide.asset-explorer.layout.v1';
 const DEFAULT_PROJECT_PANE_WIDTH = 0;
+const PROJECT_WATCH_ID = 'asset-explorer-project';
+const EXTERNAL_WATCH_ID = 'asset-explorer-external';
 
 function normalizeSlashes(input: string) {
   return input.replace(/\\/g, '/');
@@ -225,6 +246,34 @@ function getNormalizedWidth(value: number, minWidth: number, maxWidth: number) {
   return Math.max(minWidth, Math.min(maxWidth, value));
 }
 
+function sortEntries(entries: HostApiEntryItem[]) {
+  return [...entries].sort((a, b) => {
+    if (a.isDirectory === b.isDirectory) return a.name.localeCompare(b.name);
+    return a.isDirectory ? -1 : 1;
+  });
+}
+
+function applyDirChanges(entries: HostApiEntryItem[], changes: DirWatchChange[]) {
+  const map = new Map<string, HostApiEntryItem>();
+  entries.forEach((entry) => {
+    map.set(normalizeForCompare(entry.path), entry);
+  });
+
+  changes.forEach((change) => {
+    const key = normalizeForCompare(change.path);
+    if (change.op === 'remove') {
+      map.delete(key);
+      return;
+    }
+
+    if (change.entry) {
+      map.set(normalizeForCompare(change.entry.path), change.entry);
+    }
+  });
+
+  return sortEntries([...map.values()]);
+}
+
 function readAssetExplorerLayoutPreference() {
   try {
     const raw = localStorage.getItem(ASSET_EXPLORER_LAYOUT_STORAGE_KEY);
@@ -273,8 +322,12 @@ function collectSkinFolders(sceneNode: SceneNode | null) {
 export class AssetExplorerPanel extends React.PureComponent<AssetExplorerPanelProps, AssetExplorerPanelState> {
   private projectHeaderRef = React.createRef<HTMLDivElement>();
   private externalHeaderRef = React.createRef<HTMLDivElement>();
+  private functionPanelRef = React.createRef<HTMLDivElement>();
   private rootRef = React.createRef<HTMLElement>();
   private dragSplitRef: { startX: number; startWidth: number } | null = null;
+  private offDirectoryChanged: (() => void) | null = null;
+  private projectWatchPath = '';
+  private externalWatchPath = '';
 
   state: AssetExplorerPanelState = {
     projectFolderOptions: [],
@@ -295,6 +348,11 @@ export class AssetExplorerPanel extends React.PureComponent<AssetExplorerPanelPr
   };
 
   async componentDidMount() {
+    const hostApi = this.getHostApi();
+    if (hostApi?.onDirectoryChanged) {
+      this.offDirectoryChanged = hostApi.onDirectoryChanged(this.handleDirectoryChanged);
+    }
+
     const persistedWidth = readAssetExplorerLayoutPreference();
     if (typeof persistedWidth === 'number') {
       this.setState({ projectPaneWidth: persistedWidth });
@@ -304,20 +362,131 @@ export class AssetExplorerPanel extends React.PureComponent<AssetExplorerPanelPr
     window.addEventListener('resize', this.handleWindowResize);
     window.addEventListener('mousemove', this.handleSplitMouseMove);
     window.addEventListener('mouseup', this.handleSplitMouseUp);
+
+    void this.syncProjectWatch();
+    void this.syncExternalWatch();
   }
 
-  async componentDidUpdate(prevProps: AssetExplorerPanelProps) {
+  async componentDidUpdate(prevProps: AssetExplorerPanelProps, prevState: AssetExplorerPanelState) {
     if (prevProps.sceneFilePath !== this.props.sceneFilePath || prevProps.sceneData !== this.props.sceneData) {
       await this.reloadProjectFolders();
     }
 
     this.ensurePaneWidthBounds();
+
+    if (prevState.projectCurrentPath !== this.state.projectCurrentPath) {
+      void this.syncProjectWatch();
+    }
+
+    if (
+      prevState.externalCurrentPath !== this.state.externalCurrentPath ||
+      prevState.externalFolders.length !== this.state.externalFolders.length
+    ) {
+      void this.syncExternalWatch();
+    }
   }
 
   componentWillUnmount() {
     window.removeEventListener('resize', this.handleWindowResize);
     window.removeEventListener('mousemove', this.handleSplitMouseMove);
     window.removeEventListener('mouseup', this.handleSplitMouseUp);
+
+    if (this.offDirectoryChanged) {
+      this.offDirectoryChanged();
+      this.offDirectoryChanged = null;
+    }
+
+    const hostApi = this.getHostApi();
+    if (hostApi?.unwatchDirectory) {
+      void hostApi.unwatchDirectory(PROJECT_WATCH_ID);
+      void hostApi.unwatchDirectory(EXTERNAL_WATCH_ID);
+    }
+  }
+
+  handleDirectoryChanged = (payload: unknown) => {
+    if (!payload || typeof payload !== 'object') return;
+    const event = payload as DirWatchPayload;
+    if (!event.watchId || !event.mode) return;
+
+    if (event.watchId === PROJECT_WATCH_ID) {
+      if (event.mode === 'reset') {
+        this.setState({ projectEntries: sortEntries(event.entries || []) });
+        void this.loadProjectEntries();
+        return;
+      }
+
+      const changes = event.changes || [];
+      if (!changes.length) return;
+      this.setState((prev) => ({
+        projectEntries: applyDirChanges(prev.projectEntries, changes)
+      }));
+      return;
+    }
+
+    if (event.watchId === EXTERNAL_WATCH_ID) {
+      if (event.mode === 'reset') {
+        this.setState({ externalEntries: sortEntries(event.entries || []) });
+        void this.loadExternalEntries();
+        return;
+      }
+
+      const changes = event.changes || [];
+      if (!changes.length) return;
+      this.setState((prev) => ({
+        externalEntries: applyDirChanges(prev.externalEntries, changes)
+      }));
+    }
+  };
+
+  async syncProjectWatch() {
+    const hostApi = this.getHostApi();
+    if (!hostApi?.watchDirectory || !hostApi.unwatchDirectory) return;
+
+    const targetPath = this.state.projectCurrentPath;
+    if (!targetPath) {
+      if (this.projectWatchPath) {
+        await hostApi.unwatchDirectory(PROJECT_WATCH_ID);
+        this.projectWatchPath = '';
+      }
+      return;
+    }
+
+    if (this.projectWatchPath === targetPath) return;
+
+    if (this.projectWatchPath) {
+      await hostApi.unwatchDirectory(PROJECT_WATCH_ID);
+    }
+
+    const res = await hostApi.watchDirectory(PROJECT_WATCH_ID, targetPath);
+    if ((res as WatchResult).success) {
+      this.projectWatchPath = targetPath;
+    }
+  }
+
+  async syncExternalWatch() {
+    const hostApi = this.getHostApi();
+    if (!hostApi?.watchDirectory || !hostApi.unwatchDirectory) return;
+
+    const targetPath = this.state.externalCurrentPath;
+    const hasExternal = this.state.externalFolders.length > 0;
+    if (!hasExternal || !targetPath) {
+      if (this.externalWatchPath) {
+        await hostApi.unwatchDirectory(EXTERNAL_WATCH_ID);
+        this.externalWatchPath = '';
+      }
+      return;
+    }
+
+    if (this.externalWatchPath === targetPath) return;
+
+    if (this.externalWatchPath) {
+      await hostApi.unwatchDirectory(EXTERNAL_WATCH_ID);
+    }
+
+    const res = await hostApi.watchDirectory(EXTERNAL_WATCH_ID, targetPath);
+    if ((res as WatchResult).success) {
+      this.externalWatchPath = targetPath;
+    }
   }
 
   handleWindowResize = () => {
@@ -331,8 +500,9 @@ export class AssetExplorerPanel extends React.PureComponent<AssetExplorerPanelPr
 
     const minLeft = 220;
     const minRight = 260;
+    const functionPanelWidth = this.getFunctionPanelWidth();
     const dividerWidth = 1;
-    const maxLeft = Math.max(minLeft, rootWidth - minRight - dividerWidth);
+    const maxLeft = Math.max(minLeft, rootWidth - minRight - functionPanelWidth - dividerWidth);
     const next = getNormalizedWidth(this.dragSplitRef.startWidth + (e.clientX - this.dragSplitRef.startX), minLeft, maxLeft);
     this.setState({ projectPaneWidth: next });
   };
@@ -352,8 +522,9 @@ export class AssetExplorerPanel extends React.PureComponent<AssetExplorerPanelPr
 
     const minLeft = 220;
     const minRight = 260;
+    const functionPanelWidth = this.getFunctionPanelWidth();
     const dividerWidth = 1;
-    const maxLeft = Math.max(minLeft, rootWidth - minRight - dividerWidth);
+    const maxLeft = Math.max(minLeft, rootWidth - minRight - functionPanelWidth - dividerWidth);
     const nextWidth = getNormalizedWidth(this.state.projectPaneWidth || Math.round(rootWidth * 0.56), minLeft, maxLeft);
     if (nextWidth !== this.state.projectPaneWidth) {
       this.setState({ projectPaneWidth: nextWidth });
@@ -363,10 +534,15 @@ export class AssetExplorerPanel extends React.PureComponent<AssetExplorerPanelPr
   applyDefaultPaneWidth() {
     const rootWidth = this.rootRef.current?.clientWidth || 0;
     if (!rootWidth) return;
-    const nextWidth = getNormalizedWidth(Math.round(rootWidth * 0.56), 220, Math.max(220, rootWidth - 260 - 1));
+    const functionPanelWidth = this.getFunctionPanelWidth();
+    const nextWidth = getNormalizedWidth(Math.round(rootWidth * 0.56), 220, Math.max(220, rootWidth - 260 - functionPanelWidth - 1));
     if (!this.state.projectPaneWidth || this.state.projectPaneWidth === DEFAULT_PROJECT_PANE_WIDTH) {
       this.setState({ projectPaneWidth: nextWidth });
     }
+  }
+
+  getFunctionPanelWidth() {
+    return Math.max(136, this.functionPanelRef.current?.clientWidth || 0);
   }
 
   getHostApi() {
@@ -374,11 +550,17 @@ export class AssetExplorerPanel extends React.PureComponent<AssetExplorerPanelPr
       hostApi?: {
         openDirectoryDialog?: () => Promise<string | null>;
         readDirectoryFiles?: (dirPath: string) => Promise<HostApiEntryItem[]>;
+        watchDirectory?: (watchId: string, dirPath: string) => Promise<WatchResult>;
+        unwatchDirectory?: (watchId: string) => Promise<WatchResult>;
+        onDirectoryChanged?: (listener: (payload: unknown) => void) => () => void;
       };
     }).hostApi as
       | {
           openDirectoryDialog?: () => Promise<string | null>;
           readDirectoryFiles?: (dirPath: string) => Promise<HostApiEntryItem[]>;
+          watchDirectory?: (watchId: string, dirPath: string) => Promise<WatchResult>;
+          unwatchDirectory?: (watchId: string) => Promise<WatchResult>;
+          onDirectoryChanged?: (listener: (payload: unknown) => void) => () => void;
         }
       | undefined;
   }
@@ -671,7 +853,10 @@ export class AssetExplorerPanel extends React.PureComponent<AssetExplorerPanelPr
           padding: 10,
           display: 'grid',
           gridTemplateColumns: 'repeat(auto-fill, 104px)',
+          gridAutoRows: '124px',
           justifyContent: 'start',
+          alignContent: 'start',
+          alignItems: 'start',
           gap: 10,
           overflow: 'auto',
           minHeight: 0,
@@ -698,7 +883,8 @@ export class AssetExplorerPanel extends React.PureComponent<AssetExplorerPanelPr
                 display: 'flex',
                 flexDirection: 'column',
                 gap: 6,
-                cursor: item.isDirectory ? 'pointer' : 'default'
+                cursor: item.isDirectory ? 'pointer' : 'default',
+                alignSelf: 'start'
               }}
               title={item.path}
             >
@@ -766,6 +952,53 @@ export class AssetExplorerPanel extends React.PureComponent<AssetExplorerPanelPr
     return renderBreadcrumbButtons(visible, onClick);
   }
 
+  renderFunctionPanel() {
+    return (
+      <div
+        ref={this.functionPanelRef}
+        style={{
+          flex: '0 0 auto',
+          width: 'max-content',
+          minWidth: 136,
+          display: 'flex',
+          flexDirection: 'column',
+          borderLeft: '1px solid #333',
+          background: 'rgba(31,32,35,0.96)'
+        }}
+      >
+        <div
+          style={{
+            padding: '10px 12px',
+            fontSize: 12,
+            color: '#c0c0c0',
+            borderBottom: '1px solid #333',
+            letterSpacing: 0.4
+          }}
+        >
+          功能区
+        </div>
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 8, padding: 12 }}>
+          <button
+            type="button"
+            onClick={this.addExternalFolder}
+            style={{
+              background: '#2b2d33',
+              border: '1px solid #3b3d44',
+              color: '#d0d0d0',
+              borderRadius: 4,
+              fontSize: 12,
+              padding: '4px 10px',
+              cursor: 'pointer',
+              whiteSpace: 'nowrap'
+            }}
+          >
+            导入外部文件夹
+          </button>
+        </div>
+      </div>
+    );
+  }
+
   render() {
     const { height, minHeight } = this.props;
     const {
@@ -789,7 +1022,14 @@ export class AssetExplorerPanel extends React.PureComponent<AssetExplorerPanelPr
     const projectSelectOptions = [...projectFolderOptions, ...projectTemporaryFolderOptions];
     const projectBreadcrumbWidth = Math.max(0, (this.projectHeaderRef.current?.clientWidth || 0) - 340);
     const externalBreadcrumbWidth = Math.max(0, (this.externalHeaderRef.current?.clientWidth || 0) - 250);
-    const projectPaneWidth = hasExternalFolders ? getNormalizedWidth(this.state.projectPaneWidth, 220, Math.max(220, (this.rootRef.current?.clientWidth || 0) - 260 - 1)) : 0;
+    const functionPanelWidth = this.getFunctionPanelWidth();
+    const projectPaneWidth = hasExternalFolders
+      ? getNormalizedWidth(
+          this.state.projectPaneWidth,
+          220,
+          Math.max(220, (this.rootRef.current?.clientWidth || 0) - 260 - functionPanelWidth - 1)
+        )
+      : 0;
 
     return (
       <section
@@ -821,7 +1061,11 @@ export class AssetExplorerPanel extends React.PureComponent<AssetExplorerPanelPr
         </div>
 
         <div style={{ display: 'flex', flex: 1, minHeight: 0 }}>
-          <div style={{ width: hasExternalFolders ? projectPaneWidth : '100%', minWidth: 0, display: 'flex', flexDirection: 'column' }}>
+          <div
+            style={hasExternalFolders
+              ? { width: projectPaneWidth, minWidth: 0, display: 'flex', flexDirection: 'column' }
+              : { flex: '1 1 0', minWidth: 0, display: 'flex', flexDirection: 'column' }}
+          >
             <div
               ref={this.projectHeaderRef}
               style={{
@@ -856,24 +1100,6 @@ export class AssetExplorerPanel extends React.PureComponent<AssetExplorerPanelPr
               </div>
               <div style={{ minWidth: 0, flex: '1 1 auto' }}>
                 {this.renderBreadcrumbArea(projectRootPath, projectCurrentPath, projectBreadcrumbWidth, this.onProjectBreadcrumbClick)}
-              </div>
-              <div style={{ flex: '0 0 auto' }}>
-                <button
-                  type="button"
-                  onClick={this.addExternalFolder}
-                  style={{
-                    background: '#2b2d33',
-                    border: '1px solid #3b3d44',
-                    color: '#d0d0d0',
-                    borderRadius: 4,
-                    fontSize: 12,
-                    padding: '4px 10px',
-                    cursor: 'pointer',
-                    flex: '0 0 auto'
-                  }}
-                >
-                  导入外部文件夹
-                </button>
               </div>
             </div>
             {this.renderEntryGrid(
@@ -958,6 +1184,8 @@ export class AssetExplorerPanel extends React.PureComponent<AssetExplorerPanelPr
               </div>
             </>
           )}
+
+          {this.renderFunctionPanel()}
         </div>
 
         {lastError && (
