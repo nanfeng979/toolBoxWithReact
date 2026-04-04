@@ -4,10 +4,20 @@ interface AssetFunctionPanelProps {
   onAddExternalFolder: () => void;
   onApplyNewFile: () => void;
   canApplyNewFile: boolean;
+  onApplyBatchReplace: () => void;
+  canApplyBatchReplace: boolean;
+  batchReplaceLabel?: string;
 }
 
 export const AssetFunctionPanel = React.forwardRef<HTMLDivElement, AssetFunctionPanelProps>((props, ref) => {
-  const { onAddExternalFolder, onApplyNewFile, canApplyNewFile } = props;
+  const {
+    onAddExternalFolder,
+    onApplyNewFile,
+    canApplyNewFile,
+    onApplyBatchReplace,
+    canApplyBatchReplace,
+    batchReplaceLabel
+  } = props;
 
   return (
     <div
@@ -50,6 +60,23 @@ export const AssetFunctionPanel = React.forwardRef<HTMLDivElement, AssetFunction
           }}
         >
           应用新的文件
+        </button>
+        <button
+          type="button"
+          onClick={onApplyBatchReplace}
+          disabled={!canApplyBatchReplace}
+          style={{
+            background: canApplyBatchReplace ? '#2f5b3a' : '#2b2d33',
+            border: '1px solid #3b3d44',
+            color: canApplyBatchReplace ? '#e8fff0' : '#7f858f',
+            borderRadius: 4,
+            fontSize: 12,
+            padding: '4px 10px',
+            cursor: canApplyBatchReplace ? 'pointer' : 'not-allowed',
+            whiteSpace: 'nowrap'
+          }}
+        >
+          {batchReplaceLabel || '批量替换同名图片'}
         </button>
         <button
           type="button"

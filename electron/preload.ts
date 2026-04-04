@@ -16,6 +16,7 @@ if (window.location.protocol === 'miniapp:') {
       return () => ipcRenderer.off('host:dir-changed', wrapped);
     },
     copyFile: (srcPath: string, destPath: string) => ipcRenderer.invoke('host:copy-file', srcPath, destPath),
+    getFileInfo: (filePath: string) => ipcRenderer.invoke('host:get-file-info', filePath),
     getThemeColor: () => ipcRenderer.invoke('host:get-theme-color'),
     getPrivateState: (appId: string, key: string) => ipcRenderer.invoke('host:private-state:get', appId, key),
     setPrivateState: (appId: string, key: string, value: any) => ipcRenderer.invoke('host:private-state:set', appId, key, value),

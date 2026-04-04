@@ -6,6 +6,7 @@ import { DEFAULT_PROJECT_PANE_WIDTH, EXTERNAL_WATCH_ID, PROJECT_WATCH_ID } from 
 import { applyDirChanges, collectSkinFolders, sortEntries } from './assetExplorerEntryUtils';
 import {
   basename,
+  extname,
   findLayaAssetsFolder,
   getNormalizedWidth,
   getProjectRelativePath,
@@ -54,6 +55,8 @@ export class AssetExplorerPanel extends React.PureComponent<AssetExplorerPanelPr
     externalEntries: [],
     externalLoading: false,
     selectedExternalFilePath: '',
+    batchReplaceEnabled: false,
+    batchReplaceLabel: '批量替换同名图片',
     lastError: '',
     isDragActive: false
   };
@@ -94,6 +97,13 @@ export class AssetExplorerPanel extends React.PureComponent<AssetExplorerPanelPr
       prevState.externalFolders.length !== this.state.externalFolders.length
     ) {
       void this.syncExternalWatch();
+    }
+
+    if (
+      prevState.projectEntries !== this.state.projectEntries ||
+      prevState.externalEntries !== this.state.externalEntries
+    ) {
+      void this.evaluateBatchReplaceStatus();
     }
   }
 
@@ -640,6 +650,112 @@ export class AssetExplorerPanel extends React.PureComponent<AssetExplorerPanelPr
     void this.loadProjectEntries();
   };
 
+  applyBatchReplace = async () => {
+    const { projectEntries, externalEntries, projectCurrentPath, externalCurrentPath } = this.state;
+    if (!projectCurrentPath || !externalCurrentPath) return;
+
+    const hostApi = this.getHostApi();
+    if (!hostApi?.copyFile) {
+      this.setState({ lastError: 'Host API copyFile is not available.' });
+      return;
+    }
+
+    const rightMap = new Map<string, string>();
+    externalEntries.forEach((entry) => {
+      if (entry.isDirectory) return;
+      if (!this.isSupportedImage(entry.name)) return;
+      rightMap.set(entry.name.toLowerCase(), entry.path);
+    });
+
+    const matches = projectEntries.filter(
+      (entry) => !entry.isDirectory && this.isSupportedImage(entry.name) && rightMap.has(entry.name.toLowerCase())
+    );
+    if (!matches.length) {
+      this.setState({ lastError: 'No matching files to replace.' });
+      return;
+    }
+
+    this.setState({ lastError: '' });
+    let failedCount = 0;
+    for (const entry of matches) {
+      const srcPath = rightMap.get(entry.name.toLowerCase());
+      if (!srcPath) continue;
+      const result = await hostApi.copyFile(srcPath, entry.path);
+      if (!result?.success) {
+        failedCount += 1;
+      }
+    }
+
+    this.setState((prev) => ({
+      selectedProjectFilePath: '',
+      selectedExternalFilePath: '',
+      assetCacheToken: prev.assetCacheToken + 1,
+      lastError: failedCount ? `Replaced with ${failedCount} failures.` : ''
+    }));
+    void this.loadProjectEntries();
+  };
+
+  isSupportedImage = (name: string) => {
+    const ext = extname(name);
+    return ext === '.png' || ext === '.jpg' || ext === '.jpeg';
+  };
+
+  evaluateBatchReplaceStatus = async () => {
+    const { projectEntries, externalEntries } = this.state;
+    const hostApi = this.getHostApi();
+    if (!hostApi?.getFileInfo) {
+      this.setState({ batchReplaceEnabled: false, batchReplaceLabel: '批量替换同名图片' });
+      return;
+    }
+
+    const rightMap = new Map<string, string>();
+    externalEntries.forEach((entry) => {
+      if (entry.isDirectory) return;
+      if (!this.isSupportedImage(entry.name)) return;
+      rightMap.set(entry.name.toLowerCase(), entry.path);
+    });
+
+    const pairs = projectEntries
+      .filter((entry) => !entry.isDirectory && this.isSupportedImage(entry.name))
+      .map((entry) => {
+        const right = rightMap.get(entry.name.toLowerCase());
+        if (!right) return null;
+        return { left: entry.path, right };
+      })
+      .filter(Boolean) as Array<{ left: string; right: string }>;
+
+    if (!pairs.length) {
+      this.setState({ batchReplaceEnabled: false, batchReplaceLabel: '批量替换同名图片' });
+      return;
+    }
+
+    this.setState({ batchReplaceEnabled: false, batchReplaceLabel: '对比图片信息中...' });
+    let allSame = true;
+    for (const pair of pairs) {
+      const [leftInfo, rightInfo] = await Promise.all([
+        hostApi.getFileInfo(pair.left),
+        hostApi.getFileInfo(pair.right)
+      ]);
+
+      if (!leftInfo?.success || !rightInfo?.success) {
+        allSame = false;
+        break;
+      }
+
+      const same =
+        leftInfo.size === rightInfo.size &&
+        leftInfo.md5 === rightInfo.md5 &&
+        leftInfo.width === rightInfo.width &&
+        leftInfo.height === rightInfo.height;
+      if (!same) {
+        allSame = false;
+        break;
+      }
+    }
+
+    this.setState({ batchReplaceEnabled: !allSame, batchReplaceLabel: '批量替换同名图片' });
+  };
+
   beginSplitDrag = (e: React.MouseEvent<HTMLDivElement>) => {
     if (!this.state.externalFolders.length) return;
     e.preventDefault();
@@ -671,7 +787,9 @@ export class AssetExplorerPanel extends React.PureComponent<AssetExplorerPanelPr
       isDragActive,
       selectedProjectFilePath,
       selectedExternalFilePath,
-      assetCacheToken
+      assetCacheToken,
+      batchReplaceEnabled,
+      batchReplaceLabel
     } = this.state;
 
     const hasExternalFolders = externalFolders.length > 0;
@@ -888,6 +1006,9 @@ export class AssetExplorerPanel extends React.PureComponent<AssetExplorerPanelPr
             onAddExternalFolder={this.addExternalFolder}
             onApplyNewFile={this.applyNewFile}
             canApplyNewFile={Boolean(selectedProjectFilePath && selectedExternalFilePath)}
+            onApplyBatchReplace={this.applyBatchReplace}
+            canApplyBatchReplace={batchReplaceEnabled}
+            batchReplaceLabel={batchReplaceLabel}
           />
         </div>
 

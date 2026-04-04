@@ -1,8 +1,9 @@
-import { app, BrowserWindow, ipcMain, protocol, net, webFrameMain, Notification, dialog } from 'electron'
+import { app, BrowserWindow, ipcMain, protocol, net, webFrameMain, Notification, dialog, nativeImage } from 'electron'
 import { fileURLToPath, pathToFileURL } from 'node:url'
 import path from 'node:path'
 import fs from 'node:fs/promises'
 import { watch as fsWatch, type FSWatcher } from 'node:fs'
+import crypto from 'node:crypto'
 import { MiniAppService } from './services/miniAppService'
 import { PluginService } from './services/pluginService'
 import { ExplorerService } from './services/explorerService'
@@ -573,6 +574,37 @@ app.whenReady().then(() => {
       return { success: true };
     } catch (err: unknown) {
       console.error('Failed to copy file:', err);
+      return { success: false, error: err instanceof Error ? err.message : String(err) };
+    }
+  });
+
+  ipcMain.handle('host:get-file-info', async (_event, filePath: string) => {
+    try {
+      const stat = await fs.stat(filePath);
+      const data = await fs.readFile(filePath);
+      const hash = crypto.createHash('md5').update(data).digest('hex');
+
+      let width: number | null = null;
+      let height: number | null = null;
+      try {
+        const img = nativeImage.createFromBuffer(data);
+        if (!img.isEmpty()) {
+          const size = img.getSize();
+          width = size.width;
+          height = size.height;
+        }
+      } catch {
+        // ignore image size errors
+      }
+
+      return {
+        success: true,
+        size: stat.size,
+        md5: hash,
+        width,
+        height
+      };
+    } catch (err: unknown) {
       return { success: false, error: err instanceof Error ? err.message : String(err) };
     }
   });
