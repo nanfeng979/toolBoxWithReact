@@ -27,6 +27,47 @@ const DEFAULT_PRIVATE_RENDER_STATE: PrivateRenderState = {
   affectChildren: false
 };
 
+let measureCtx: CanvasRenderingContext2D | null = null;
+
+function getMeasureContext(): CanvasRenderingContext2D | null {
+  if (measureCtx) return measureCtx;
+  if (typeof document === 'undefined') return null;
+  const canvas = document.createElement('canvas');
+  measureCtx = canvas.getContext('2d');
+  return measureCtx;
+}
+
+function measureLabelText(text: string, fontSize: number): { width: number; height: number; lineSpacing: number } {
+  const lines = text.replace(/\\n/g, '\n').split('\n');
+  const ctx = getMeasureContext();
+  const lineSpacing = fontSize * 1.2;
+
+  if (!ctx) {
+    return {
+      width: Math.max(...lines.map((line) => line.length * fontSize * 0.6), 0),
+      height: (lines.length - 1) * lineSpacing + fontSize,
+      lineSpacing
+    };
+  }
+
+  ctx.font = `${fontSize}px sans-serif`;
+  let maxWidth = 0;
+  let maxLineHeight = 0;
+
+  for (const line of lines) {
+    const metrics = ctx.measureText(line);
+    maxWidth = Math.max(maxWidth, metrics.width);
+    const lineHeight = (metrics.actualBoundingBoxAscent || 0) + (metrics.actualBoundingBoxDescent || 0);
+    maxLineHeight = Math.max(maxLineHeight, lineHeight || fontSize);
+  }
+
+  return {
+    width: maxWidth,
+    height: (lines.length - 1) * lineSpacing + maxLineHeight,
+    lineSpacing
+  };
+}
+
 function isPrivateControlledNode(node: SceneNode) {
   return node.type === 'Label' || node.type === 'Image' || node.type === 'Sprite';
 }
@@ -279,6 +320,8 @@ function hitTestSceneNodeInternal(
 
   let actualW = w;
   let actualH = h;
+  let actualX = x;
+  let actualY = y;
 
   if ((node.type === 'Image' || node.type === 'Sprite') && (p.skin || p.texture)) {
     const img = imageCache[p.skin || p.texture];
@@ -288,9 +331,14 @@ function hitTestSceneNodeInternal(
     }
   } else if (node.type === 'Label') {
     const fontSize = p.fontSize || 20;
-    const lines = (p.text || '').replace(/\\n/g, '\n').split('\n');
-    actualH = h || lines.length * fontSize * 1.2;
-    actualW = w || Math.max(...lines.map((line: string) => line.length * fontSize * 0.6));
+    const metrics = measureLabelText(p.text || '', fontSize);
+    actualH = h || metrics.height;
+    actualW = w || metrics.width;
+
+    if (!w) {
+      if (p.align === 'center') actualX = x - actualW / 2;
+      else if (p.align === 'right') actualX = x - actualW;
+    }
   } else if (node.type === 'Scene' || node.type === 'View' || node.type === 'Dialog') {
     actualW = p.width || (node.type === 'Scene' ? 800 : 0);
     actualH = p.height || (node.type === 'Scene' ? 600 : 0);
@@ -298,8 +346,8 @@ function hitTestSceneNodeInternal(
 
   if (actualW === 0 && actualH === 0) return null;
 
-  if (targetX >= x && targetX <= x + actualW && targetY >= y && targetY <= y + actualH) {
-    return { node, x, y, w: actualW, h: actualH };
+  if (targetX >= actualX && targetX <= actualX + actualW && targetY >= actualY && targetY <= actualY + actualH) {
+    return { node, x: actualX, y: actualY, w: actualW, h: actualH };
   }
 
   return null;
@@ -319,6 +367,8 @@ export function resolveHitByNode(
 
   let actualW = w;
   let actualH = h;
+  let actualX = x;
+  let actualY = y;
 
   if ((root.type === 'Image' || root.type === 'Sprite') && (p.skin || p.texture)) {
     const img = imageCache[p.skin || p.texture];
@@ -328,9 +378,14 @@ export function resolveHitByNode(
     }
   } else if (root.type === 'Label') {
     const fontSize = p.fontSize || 20;
-    const lines = (p.text || '').replace(/\\n/g, '\n').split('\n');
-    actualH = h || lines.length * fontSize * 1.2;
-    actualW = w || Math.max(...lines.map((line: string) => line.length * fontSize * 0.6));
+    const metrics = measureLabelText(p.text || '', fontSize);
+    actualH = h || metrics.height;
+    actualW = w || metrics.width;
+
+    if (!w) {
+      if (p.align === 'center') actualX = x - actualW / 2;
+      else if (p.align === 'right') actualX = x - actualW;
+    }
   } else if (root.type === 'Scene' || root.type === 'View' || root.type === 'Dialog') {
     actualW = p.width || (root.type === 'Scene' ? 800 : 0);
     actualH = p.height || (root.type === 'Scene' ? 600 : 0);
@@ -339,8 +394,8 @@ export function resolveHitByNode(
   if (root === targetNode) {
     return {
       node: root,
-      x,
-      y,
+      x: actualX,
+      y: actualY,
       w: actualW,
       h: actualH
     };
