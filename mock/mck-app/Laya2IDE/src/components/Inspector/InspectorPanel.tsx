@@ -1,5 +1,26 @@
 import React, { useRef } from 'react';
 import { useSceneStore } from '../../store/sceneStore.ts';
+import {
+  getInspectorColorButtonStyle,
+  inspectorCardGapStyle,
+  inspectorCardStyle,
+  inspectorCardTitleStyle,
+  inspectorColorButtonWrapStyle,
+  inspectorEmptyStateStyle,
+  inspectorFieldLabelStyle,
+  inspectorFieldRowStyle,
+  inspectorHiddenColorInputStyle,
+  inspectorInputShrinkStyle,
+  inspectorInputStyle,
+  inspectorNodeNameStyle,
+  inspectorNodeTypeStyle,
+  inspectorPanelRootStyle,
+  inspectorRangeGroupStyle,
+  inspectorRangeInputStyle,
+  inspectorRangeLabelStyle,
+  inspectorToggleLabelStyle,
+  inspectorToggleRowStyle
+} from './InspectorPanel.styles';
 
 const REFERENCE_PRIVATE_TYPES = new Set(['Scene', 'View', 'Dialog']);
 const VISUAL_PRIVATE_TYPES = new Set(['Label', 'Image', 'Sprite']);
@@ -46,23 +67,13 @@ interface ColorFieldRowProps {
 
 function FieldRow({ label, value, onCommit }: FieldRowProps) {
   return (
-    <label style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 8 }}>
-      <span style={{ width: 52, color: '#bcbcbc', fontSize: 12, textTransform: 'uppercase' }}>{label}</span>
+    <label style={inspectorFieldRowStyle}>
+      <span style={inspectorFieldLabelStyle}>{label}</span>
       <input
         type="number"
         value={value}
         onChange={(e) => onCommit(toNumberOrZero(e.target.value))}
-        style={{
-          flex: 1,
-          height: 26,
-          background: '#1f1f1f',
-          border: '1px solid #3f3f46',
-          color: '#e5e5e5',
-          borderRadius: 4,
-          padding: '0 8px',
-          fontSize: 12,
-          outline: 'none'
-        }}
+        style={inspectorInputStyle}
       />
     </label>
   );
@@ -70,23 +81,13 @@ function FieldRow({ label, value, onCommit }: FieldRowProps) {
 
 function TextFieldRow({ label, value, onCommit }: TextFieldRowProps) {
   return (
-    <label style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 8 }}>
-      <span style={{ width: 52, color: '#bcbcbc', fontSize: 12, textTransform: 'uppercase' }}>{label}</span>
+    <label style={inspectorFieldRowStyle}>
+      <span style={inspectorFieldLabelStyle}>{label}</span>
       <input
         type="text"
         value={value}
         onChange={(e) => onCommit(e.target.value)}
-        style={{
-          flex: 1,
-          height: 26,
-          background: '#1f1f1f',
-          border: '1px solid #3f3f46',
-          color: '#e5e5e5',
-          borderRadius: 4,
-          padding: '0 8px',
-          fontSize: 12,
-          outline: 'none'
-        }}
+        style={inspectorInputStyle}
       />
     </label>
   );
@@ -97,38 +98,19 @@ function ColorFieldRow({ label, value, onCommit }: ColorFieldRowProps) {
   const colorValue = toHexColor(value, '#000000');
 
   return (
-    <label style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 8 }}>
-      <span style={{ width: 52, color: '#bcbcbc', fontSize: 12, textTransform: 'uppercase' }}>{label}</span>
+    <label style={inspectorFieldRowStyle}>
+      <span style={inspectorFieldLabelStyle}>{label}</span>
       <input
         type="text"
         value={value}
         onChange={(e) => onCommit(e.target.value)}
-        style={{
-          flex: 1,
-          minWidth: 0,
-          height: 26,
-          background: '#1f1f1f',
-          border: '1px solid #3f3f46',
-          color: '#e5e5e5',
-          borderRadius: 4,
-          padding: '0 8px',
-          fontSize: 12,
-          outline: 'none'
-        }}
+        style={{ ...inspectorInputStyle, ...inspectorInputShrinkStyle }}
       />
-      <div style={{ position: 'relative' }}>
+      <div style={inspectorColorButtonWrapStyle}>
         <button
           type="button"
           onClick={() => colorInputRef.current?.click()}
-          style={{
-            width: 30,
-            height: 26,
-            padding: 0,
-            border: '1px solid #3f3f46',
-            background: colorValue,
-            borderRadius: 4,
-            cursor: 'pointer'
-          }}
+          style={getInspectorColorButtonStyle(colorValue)}
           title="Pick color"
           aria-label="Pick color"
         />
@@ -137,15 +119,7 @@ function ColorFieldRow({ label, value, onCommit }: ColorFieldRowProps) {
           ref={colorInputRef}
           value={colorValue}
           onChange={(e) => onCommit(e.target.value)}
-          style={{
-            position: 'absolute',
-            left: 0,
-            top: 0,
-            width: 1,
-            height: 1,
-            opacity: 0,
-            pointerEvents: 'none'
-          }}
+          style={inspectorHiddenColorInputStyle}
           aria-hidden="true"
           tabIndex={-1}
         />
@@ -170,221 +144,148 @@ export function InspectorPanel() {
   const selectedPrivateId = selectedPath ? privateNodeState.pathToId[selectedPath] : undefined;
   const selectedPrivateState = selectedPrivateId ? privateNodeState.byId[selectedPrivateId] : undefined;
 
-  const updateNumericProp = (key: 'x' | 'y' | 'width' | 'height', nextValue: number) => {
+  const updatePrivateByPath = (changes: Record<string, unknown>) => {
+    if (!selectedPath) return;
+    updateNodePrivateSettingsByPath(selectedPath, changes);
+  };
+
+  const updateNumericProp = (key: 'x' | 'y' | 'width' | 'height' | 'fontSize', nextValue: number) => {
     updateSelectedNodeProps({ [key]: nextValue });
   };
 
-  const updateTextProp = (key: 'text' | 'color' | 'skin' | 'texture', nextValue: string) => {
-    updateSelectedNodeProps({ [key]: nextValue });
-  };
-
-  const updateIdentityProp = (key: 'name' | 'var', nextValue: string) => {
+  const updateTextProp = (key: 'text' | 'color' | 'skin' | 'texture' | 'name' | 'var', nextValue: string) => {
     updateSelectedNodeProps({ [key]: nextValue });
   };
 
   return (
-    <div style={{ padding: 12, overflow: 'auto', height: 'calc(100% - 1px)', boxSizing: 'border-box' }}>
+    <div style={inspectorPanelRootStyle}>
       {!selectedNode && (
-        <div
-          style={{
-            border: '1px solid #3f3f46',
-            borderRadius: 6,
-            minHeight: 64,
-            background: '#2a2a2a',
-            display: 'flex',
-            alignItems: 'center',
-            justifyContent: 'center',
-            color: '#9aa0a6',
-            fontSize: 12,
-            textAlign: 'center',
-            padding: 12,
-            boxSizing: 'border-box'
-          }}
-        >
+        <div style={inspectorEmptyStateStyle}>
           Select a node from canvas or hierarchy
         </div>
       )}
 
       {selectedNode && (
         <>
-      <div
-        style={{
-          border: '1px solid #3f3f46',
-          borderRadius: 6,
-          padding: 10,
-          marginBottom: 12,
-          background: '#2a2a2a'
-        }}
-      >
-        <div style={{ color: '#9aa0a6', fontSize: 11, marginBottom: 6 }}>NODE</div>
-        <div style={{ color: '#f0f0f0', fontSize: 12, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-          {(selectedProps.var || selectedProps.name || selectedNode.type) as string}
-        </div>
-        <div style={{ color: '#7f7f7f', fontSize: 11, marginTop: 3 }}>{selectedNode.type}</div>
-      </div>
-
-      <div
-        style={{
-          border: '1px solid #3f3f46',
-          borderRadius: 6,
-          padding: 10,
-          marginBottom: 12,
-          background: '#2a2a2a'
-        }}
-      >
-        <div style={{ color: '#9aa0a6', fontSize: 11, marginBottom: 10 }}>IDENTITY</div>
-        <TextFieldRow label="name" value={String(selectedProps.name || '')} onCommit={(v) => updateIdentityProp('name', v)} />
-        <TextFieldRow label="var" value={String(selectedProps.var || '')} onCommit={(v) => updateIdentityProp('var', v)} />
-      </div>
-
-      <div
-        style={{
-          border: '1px solid #3f3f46',
-          borderRadius: 6,
-          padding: 10,
-          background: '#2a2a2a'
-        }}
-      >
-        <div style={{ color: '#9aa0a6', fontSize: 11, marginBottom: 10 }}>TRANSFORM (MINIMAL)</div>
-        <FieldRow label="x" value={Number(selectedProps.x || 0)} onCommit={(v) => updateNumericProp('x', v)} />
-        <FieldRow label="y" value={Number(selectedProps.y || 0)} onCommit={(v) => updateNumericProp('y', v)} />
-        <FieldRow label="width" value={Number(selectedProps.width || 0)} onCommit={(v) => updateNumericProp('width', v)} />
-        <FieldRow label="height" value={Number(selectedProps.height || 0)} onCommit={(v) => updateNumericProp('height', v)} />
-      </div>
-
-      {selectedNode.type === 'Label' && (
-        <div
-          style={{
-            border: '1px solid #3f3f46',
-            borderRadius: 6,
-            padding: 10,
-            marginTop: 12,
-            background: '#2a2a2a'
-          }}
-        >
-          <div style={{ color: '#9aa0a6', fontSize: 11, marginBottom: 10 }}>LABEL</div>
-          <TextFieldRow label="text" value={String(selectedProps.text || '')} onCommit={(v) => updateTextProp('text', v)} />
-          <ColorFieldRow label="color" value={String(selectedProps.color || '#000000')} onCommit={(v) => updateTextProp('color', v)} />
-          <FieldRow label="font" value={Number(selectedProps.fontSize || 20)} onCommit={(v) => updateSelectedNodeProps({ fontSize: v })} />
-        </div>
-      )}
-
-      {(selectedNode.type === 'Image' || selectedNode.type === 'Sprite') && (
-        <div
-          style={{
-            border: '1px solid #3f3f46',
-            borderRadius: 6,
-            padding: 10,
-            marginTop: 12,
-            background: '#2a2a2a'
-          }}
-        >
-          <div style={{ color: '#9aa0a6', fontSize: 11, marginBottom: 10 }}>RESOURCE</div>
-          <TextFieldRow label="skin" value={String(selectedProps.skin || '')} onCommit={(v) => updateTextProp('skin', v)} />
-          <TextFieldRow
-            label="texture"
-            value={String(selectedProps.texture || '')}
-            onCommit={(v) => updateTextProp('texture', v)}
-          />
-        </div>
-      )}
-
-      {supportsNodePrivate && (
-        <div
-          style={{
-            border: '1px solid #3f3f46',
-            borderRadius: 6,
-            padding: 10,
-            marginTop: 12,
-            background: '#2a2a2a'
-          }}
-        >
-          <div style={{ color: '#9aa0a6', fontSize: 11, marginBottom: 10 }}>
-            私有属性
+          <div style={{ ...inspectorCardStyle, marginBottom: 12 }}>
+            <div style={{ ...inspectorCardTitleStyle, marginBottom: 6 }}>NODE</div>
+            <div style={inspectorNodeNameStyle}>
+              {(selectedProps.var || selectedProps.name || selectedNode.type) as string}
+            </div>
+            <div style={inspectorNodeTypeStyle}>{selectedNode.type}</div>
           </div>
+
+          <div style={{ ...inspectorCardStyle, marginBottom: 12 }}>
+            <div style={inspectorCardTitleStyle}>IDENTITY</div>
+            <TextFieldRow label="name" value={String(selectedProps.name || '')} onCommit={(v) => updateTextProp('name', v)} />
+            <TextFieldRow label="var" value={String(selectedProps.var || '')} onCommit={(v) => updateTextProp('var', v)} />
+          </div>
+
+          <div style={inspectorCardStyle}>
+            <div style={inspectorCardTitleStyle}>TRANSFORM (MINIMAL)</div>
+            <FieldRow label="x" value={Number(selectedProps.x || 0)} onCommit={(v) => updateNumericProp('x', v)} />
+            <FieldRow label="y" value={Number(selectedProps.y || 0)} onCommit={(v) => updateNumericProp('y', v)} />
+            <FieldRow label="width" value={Number(selectedProps.width || 0)} onCommit={(v) => updateNumericProp('width', v)} />
+            <FieldRow label="height" value={Number(selectedProps.height || 0)} onCommit={(v) => updateNumericProp('height', v)} />
+          </div>
+
+          {selectedNode.type === 'Label' && (
+            <div style={{ ...inspectorCardStyle, ...inspectorCardGapStyle }}>
+              <div style={inspectorCardTitleStyle}>LABEL</div>
+              <TextFieldRow label="text" value={String(selectedProps.text || '')} onCommit={(v) => updateTextProp('text', v)} />
+              <ColorFieldRow label="color" value={String(selectedProps.color || '#000000')} onCommit={(v) => updateTextProp('color', v)} />
+              <FieldRow label="font" value={Number(selectedProps.fontSize || 20)} onCommit={(v) => updateNumericProp('fontSize', v)} />
+            </div>
+          )}
+
+          {(selectedNode.type === 'Image' || selectedNode.type === 'Sprite') && (
+            <div style={{ ...inspectorCardStyle, ...inspectorCardGapStyle }}>
+              <div style={inspectorCardTitleStyle}>RESOURCE</div>
+              <TextFieldRow label="skin" value={String(selectedProps.skin || '')} onCommit={(v) => updateTextProp('skin', v)} />
+              <TextFieldRow
+                label="texture"
+                value={String(selectedProps.texture || '')}
+                onCommit={(v) => updateTextProp('texture', v)}
+              />
+            </div>
+          )}
+
+          {supportsNodePrivate && (
+            <div style={{ ...inspectorCardStyle, ...inspectorCardGapStyle }}>
+              <div style={inspectorCardTitleStyle}>私有属性</div>
           {/* <div style={{ color: '#7f7f7f', fontSize: 11, marginBottom: 8 }}>
             编号: {selectedPrivateState?.id || '-'}
           </div> */}
           {/* <div style={{ color: '#7f7f7f', fontSize: 11, marginBottom: 10, wordBreak: 'break-all' }}>
             路径: {selectedPrivateState?.path || selectedPath || '-'}
           </div> */}
-          <label style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 10 }}>
-            <span style={{ color: '#d0d0d0', fontSize: 12 }}>影响子对象</span>
-            <input
-              type="checkbox"
-              checked={selectedPrivateState?.affectChildren ?? true}
-              disabled={!selectedPrivateState}
-              onChange={(e) => updateNodePrivateSettingsByPath(selectedPath, { affectChildren: e.target.checked })}
-            />
-          </label>
-          <label style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 10 }}>
-            <span style={{ color: '#d0d0d0', fontSize: 12 }}>
-              节点显示
-            </span>
-            <input
-              type="checkbox"
-              checked={selectedPrivateState?.nodeVisible ?? true}
-              disabled={!selectedPrivateState}
-              onChange={(e) => updateNodePrivateSettingsByPath(selectedPath, { nodeVisible: e.target.checked })}
-            />
-          </label>
-          <label style={{ display: 'block' }}>
-            <div style={{ color: '#d0d0d0', fontSize: 12, marginBottom: 6 }}>
-              节点透明度：{(selectedPrivateState?.nodeOpacity ?? 1).toFixed(2)}
+              <label style={inspectorToggleRowStyle}>
+                <span style={inspectorToggleLabelStyle}>影响子对象</span>
+                <input
+                  type="checkbox"
+                  checked={selectedPrivateState?.affectChildren ?? true}
+                  disabled={!selectedPrivateState}
+                  onChange={(e) => updatePrivateByPath({ affectChildren: e.target.checked })}
+                />
+              </label>
+              <label style={inspectorToggleRowStyle}>
+                <span style={inspectorToggleLabelStyle}>节点显示</span>
+                <input
+                  type="checkbox"
+                  checked={selectedPrivateState?.nodeVisible ?? true}
+                  disabled={!selectedPrivateState}
+                  onChange={(e) => updatePrivateByPath({ nodeVisible: e.target.checked })}
+                />
+              </label>
+              <label style={inspectorRangeGroupStyle}>
+                <div style={inspectorRangeLabelStyle}>
+                  节点透明度：{(selectedPrivateState?.nodeOpacity ?? 1).toFixed(2)}
+                </div>
+                <input
+                  type="range"
+                  min={0}
+                  max={1}
+                  step={0.05}
+                  value={selectedPrivateState?.nodeOpacity ?? 1}
+                  disabled={!selectedPrivateState}
+                  onChange={(e) => updatePrivateByPath({ nodeOpacity: Number(e.target.value) })}
+                  style={inspectorRangeInputStyle}
+                />
+              </label>
             </div>
-            <input
-              type="range"
-              min={0}
-              max={1}
-              step={0.05}
-              value={selectedPrivateState?.nodeOpacity ?? 1}
-              disabled={!selectedPrivateState}
-              onChange={(e) => updateNodePrivateSettingsByPath(selectedPath, { nodeOpacity: Number(e.target.value) })}
-              style={{ width: '100%' }}
-            />
-          </label>
-        </div>
-      )}
+          )}
 
-      {supportsReferencePrivate && (
-        <div
-          style={{
-            border: '1px solid #3f3f46',
-            borderRadius: 6,
-            padding: 10,
-            marginTop: 12,
-            background: '#2a2a2a'
-          }}
-        >
-          <div style={{ color: '#9aa0a6', fontSize: 11, marginBottom: 10 }}>私有属性 / 参考图</div>
-          <label style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 10 }}>
-            <span style={{ color: '#d0d0d0', fontSize: 12 }}>参考图显示</span>
-            <input
-              type="checkbox"
-              checked={selectedPrivateState?.referenceVisible ?? true}
-              disabled={!selectedPrivateState}
-              onChange={(e) => updateNodePrivateSettingsByPath(selectedPath, { referenceVisible: e.target.checked })}
-            />
-          </label>
-          <label style={{ display: 'block' }}>
-            <div style={{ color: '#d0d0d0', fontSize: 12, marginBottom: 6 }}>
-              参考图透明度：{(selectedPrivateState?.referenceOpacity ?? 1).toFixed(2)}
+          {supportsReferencePrivate && (
+            <div style={{ ...inspectorCardStyle, ...inspectorCardGapStyle }}>
+              <div style={inspectorCardTitleStyle}>私有属性 / 参考图</div>
+              <label style={inspectorToggleRowStyle}>
+                <span style={inspectorToggleLabelStyle}>参考图显示</span>
+                <input
+                  type="checkbox"
+                  checked={selectedPrivateState?.referenceVisible ?? true}
+                  disabled={!selectedPrivateState}
+                  onChange={(e) => updatePrivateByPath({ referenceVisible: e.target.checked })}
+                />
+              </label>
+              <label style={inspectorRangeGroupStyle}>
+                <div style={inspectorRangeLabelStyle}>
+                  参考图透明度：{(selectedPrivateState?.referenceOpacity ?? 1).toFixed(2)}
+                </div>
+                <input
+                  type="range"
+                  min={0}
+                  max={1}
+                  step={0.05}
+                  value={selectedPrivateState?.referenceOpacity ?? 1}
+                  disabled={!selectedPrivateState}
+                  onChange={(e) => updatePrivateByPath({ referenceOpacity: Number(e.target.value) })}
+                  style={inspectorRangeInputStyle}
+                />
+              </label>
             </div>
-            <input
-              type="range"
-              min={0}
-              max={1}
-              step={0.05}
-              value={selectedPrivateState?.referenceOpacity ?? 1}
-              disabled={!selectedPrivateState}
-              onChange={(e) => updateNodePrivateSettingsByPath(selectedPath, { referenceOpacity: Number(e.target.value) })}
-              style={{ width: '100%' }}
-            />
-          </label>
-        </div>
-      )}
+          )}
 
-      {!supportsNodePrivate && !supportsReferencePrivate}
+          {!supportsNodePrivate && !supportsReferencePrivate}
         </>
       )}
     </div>
