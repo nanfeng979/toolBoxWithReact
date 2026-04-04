@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useRef } from 'react';
 import { useSceneStore } from '../../store/sceneStore.ts';
 
 const REFERENCE_PRIVATE_TYPES = new Set(['Scene', 'View', 'Dialog']);
@@ -9,6 +9,23 @@ function toNumberOrZero(value: string) {
   return Number.isFinite(parsed) ? parsed : 0;
 }
 
+function toHexColor(value: string | undefined, fallback = '#000000') {
+  if (!value) return fallback;
+  const trimmed = value.trim();
+  if (!trimmed.startsWith('#')) return fallback;
+  const hex = trimmed.slice(1);
+  if (/^[0-9a-fA-F]{3}$/.test(hex)) {
+    return `#${hex[0]}${hex[0]}${hex[1]}${hex[1]}${hex[2]}${hex[2]}`;
+  }
+  if (/^[0-9a-fA-F]{6}$/.test(hex)) {
+    return `#${hex.toLowerCase()}`;
+  }
+  if (/^[0-9a-fA-F]{8}$/.test(hex)) {
+    return `#${hex.slice(0, 6).toLowerCase()}`;
+  }
+  return fallback;
+}
+
 interface FieldRowProps {
   label: string;
   value: number;
@@ -16,6 +33,12 @@ interface FieldRowProps {
 }
 
 interface TextFieldRowProps {
+  label: string;
+  value: string;
+  onCommit: (nextValue: string) => void;
+}
+
+interface ColorFieldRowProps {
   label: string;
   value: string;
   onCommit: (nextValue: string) => void;
@@ -65,6 +88,68 @@ function TextFieldRow({ label, value, onCommit }: TextFieldRowProps) {
           outline: 'none'
         }}
       />
+    </label>
+  );
+}
+
+function ColorFieldRow({ label, value, onCommit }: ColorFieldRowProps) {
+  const colorInputRef = useRef<HTMLInputElement | null>(null);
+  const colorValue = toHexColor(value, '#000000');
+
+  return (
+    <label style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 8 }}>
+      <span style={{ width: 52, color: '#bcbcbc', fontSize: 12, textTransform: 'uppercase' }}>{label}</span>
+      <input
+        type="text"
+        value={value}
+        onChange={(e) => onCommit(e.target.value)}
+        style={{
+          flex: 1,
+          minWidth: 0,
+          height: 26,
+          background: '#1f1f1f',
+          border: '1px solid #3f3f46',
+          color: '#e5e5e5',
+          borderRadius: 4,
+          padding: '0 8px',
+          fontSize: 12,
+          outline: 'none'
+        }}
+      />
+      <div style={{ position: 'relative' }}>
+        <button
+          type="button"
+          onClick={() => colorInputRef.current?.click()}
+          style={{
+            width: 30,
+            height: 26,
+            padding: 0,
+            border: '1px solid #3f3f46',
+            background: colorValue,
+            borderRadius: 4,
+            cursor: 'pointer'
+          }}
+          title="Pick color"
+          aria-label="Pick color"
+        />
+        <input
+          type="color"
+          ref={colorInputRef}
+          value={colorValue}
+          onChange={(e) => onCommit(e.target.value)}
+          style={{
+            position: 'absolute',
+            left: 0,
+            top: 0,
+            width: 1,
+            height: 1,
+            opacity: 0,
+            pointerEvents: 'none'
+          }}
+          aria-hidden="true"
+          tabIndex={-1}
+        />
+      </div>
     </label>
   );
 }
@@ -179,7 +264,7 @@ export function InspectorPanel() {
         >
           <div style={{ color: '#9aa0a6', fontSize: 11, marginBottom: 10 }}>LABEL</div>
           <TextFieldRow label="text" value={String(selectedProps.text || '')} onCommit={(v) => updateTextProp('text', v)} />
-          <TextFieldRow label="color" value={String(selectedProps.color || '#000000')} onCommit={(v) => updateTextProp('color', v)} />
+          <ColorFieldRow label="color" value={String(selectedProps.color || '#000000')} onCommit={(v) => updateTextProp('color', v)} />
           <FieldRow label="font" value={Number(selectedProps.fontSize || 20)} onCommit={(v) => updateSelectedNodeProps({ fontSize: v })} />
         </div>
       )}
