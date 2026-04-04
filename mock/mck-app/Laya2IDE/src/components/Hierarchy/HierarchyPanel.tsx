@@ -80,7 +80,7 @@ export function HierarchyPanel() {
     if (!sceneData) return;
     const hit = resolveHitByNode(sceneData, node);
     if (hit) setSelectedHit(hit);
-    else setSelectedHit({ node, x: 0, y: 0, w: 0, h: 0 });
+    else setSelectedHit({ node, x: 0, y: 0, w: 0, h: 0, path: '0' });
   };
 
   const selectedRow = useMemo(() => {
@@ -139,7 +139,7 @@ export function HierarchyPanel() {
 
     const hit = resolveHitByNode(sceneData, nextNode);
     if (hit) setSelectedHit(hit);
-    else setSelectedHit({ node: nextNode, x: 0, y: 0, w: 0, h: 0 });
+    else setSelectedHit({ node: nextNode, x: 0, y: 0, w: 0, h: 0, path: row.path });
 
     setDirty(true);
     bumpVersion();
@@ -174,7 +174,7 @@ export function HierarchyPanel() {
 
     const hit = resolveHitByNode(sceneData, nextNode);
     if (hit) setSelectedHit(hit);
-    else setSelectedHit({ node: nextNode, x: 0, y: 0, w: 0, h: 0 });
+    else setSelectedHit({ node: nextNode, x: 0, y: 0, w: 0, h: 0, path: row.path });
 
     setDirty(true);
     bumpVersion();

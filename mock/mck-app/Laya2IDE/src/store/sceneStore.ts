@@ -340,6 +340,7 @@ export const useSceneStore = create<SceneStore>((set) => ({
       }
 
       const recalculatedHit = resolveHitByNode(state.sceneData, selectedNode);
+      const fallbackPath = state.nodePathMap.get(selectedNode) || '0';
 
       let history = state.history;
       let historyCursor = state.historyCursor;
@@ -381,7 +382,7 @@ export const useSceneStore = create<SceneStore>((set) => ({
       }
 
       return {
-        selectedHit: recalculatedHit || { node: selectedNode, x: 0, y: 0, w: 0, h: 0 },
+        selectedHit: recalculatedHit || { node: selectedNode, x: 0, y: 0, w: 0, h: 0, path: fallbackPath },
         version: state.version + 1,
         isDirty: historyCursor !== state.savedCursor,
         history,
@@ -418,6 +419,7 @@ export const useSceneStore = create<SceneStore>((set) => ({
       parentNode.isDirectory = hasChild;
 
       const nextSelectedHit = resolveHitByNode(state.sceneData, parentNode);
+      const fallbackPath = state.nodePathMap.get(parentNode) || '0';
 
       const historyBase = state.history.slice(0, state.historyCursor);
       const entry: DeleteHistoryEntry = {
@@ -432,7 +434,7 @@ export const useSceneStore = create<SceneStore>((set) => ({
       const nextCursor = nextHistory.length;
 
       return {
-        selectedHit: nextSelectedHit || { node: parentNode, x: 0, y: 0, w: 0, h: 0 },
+        selectedHit: nextSelectedHit || { node: parentNode, x: 0, y: 0, w: 0, h: 0, path: fallbackPath },
         version: state.version + 1,
         history: nextHistory,
         historyCursor: nextCursor,
@@ -469,10 +471,11 @@ export const useSceneStore = create<SceneStore>((set) => ({
         }
 
         const nextSelectedHit = state.selectedHit?.node === node ? resolveHitByNode(state.sceneData, node) : state.selectedHit;
+        const fallbackPath = state.nodePathMap.get(node) || '0';
         const nextCursor = state.historyCursor - 1;
 
         return {
-          selectedHit: nextSelectedHit || (state.selectedHit?.node === node ? { node, x: 0, y: 0, w: 0, h: 0 } : state.selectedHit),
+          selectedHit: nextSelectedHit || (state.selectedHit?.node === node ? { node, x: 0, y: 0, w: 0, h: 0, path: fallbackPath } : state.selectedHit),
           version: state.version + 1,
           historyCursor: nextCursor,
           isDirty: nextCursor !== state.savedCursor
@@ -491,10 +494,11 @@ export const useSceneStore = create<SceneStore>((set) => ({
         parentNode.isDirectory = entry.beforeParentIsDirectory;
 
         const restoredHit = resolveHitByNode(state.sceneData, entry.removedNode);
+        const fallbackPath = state.nodePathMap.get(entry.removedNode) || '0';
         const nextCursor = state.historyCursor - 1;
 
         return {
-          selectedHit: restoredHit || { node: entry.removedNode, x: 0, y: 0, w: 0, h: 0 },
+          selectedHit: restoredHit || { node: entry.removedNode, x: 0, y: 0, w: 0, h: 0, path: fallbackPath },
           version: state.version + 1,
           historyCursor: nextCursor,
           isDirty: nextCursor !== state.savedCursor,
@@ -533,10 +537,11 @@ export const useSceneStore = create<SceneStore>((set) => ({
         }
 
         const nextSelectedHit = state.selectedHit?.node === node ? resolveHitByNode(state.sceneData, node) : state.selectedHit;
+        const fallbackPath = state.nodePathMap.get(node) || '0';
         const nextCursor = state.historyCursor + 1;
 
         return {
-          selectedHit: nextSelectedHit || (state.selectedHit?.node === node ? { node, x: 0, y: 0, w: 0, h: 0 } : state.selectedHit),
+          selectedHit: nextSelectedHit || (state.selectedHit?.node === node ? { node, x: 0, y: 0, w: 0, h: 0, path: fallbackPath } : state.selectedHit),
           version: state.version + 1,
           historyCursor: nextCursor,
           isDirty: nextCursor !== state.savedCursor
@@ -559,10 +564,11 @@ export const useSceneStore = create<SceneStore>((set) => ({
         parentNode.isDirectory = hasChild;
 
         const parentHit = resolveHitByNode(state.sceneData, parentNode);
+        const fallbackPath = state.nodePathMap.get(parentNode) || '0';
         const nextCursor = state.historyCursor + 1;
 
         return {
-          selectedHit: parentHit || { node: parentNode, x: 0, y: 0, w: 0, h: 0 },
+          selectedHit: parentHit || { node: parentNode, x: 0, y: 0, w: 0, h: 0, path: fallbackPath },
           version: state.version + 1,
           historyCursor: nextCursor,
           isDirty: nextCursor !== state.savedCursor,

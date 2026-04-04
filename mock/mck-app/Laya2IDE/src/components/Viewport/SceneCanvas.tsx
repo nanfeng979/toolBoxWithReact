@@ -1,7 +1,7 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { useSceneStore } from '../../store/sceneStore.ts';
 import { SceneNode } from '../../types/scene';
-import { GizmoRenderer, hitTestSceneNode, SceneRenderer } from '../../core/Renderer';
+import { GizmoRenderer, hitTestSceneNode, hitTestSceneNodeAll, SceneRenderer } from '../../core/Renderer';
 
 interface SceneCanvasProps {
   sceneData: SceneNode | null;
@@ -30,6 +30,8 @@ export function SceneCanvas({ sceneData }: SceneCanvasProps) {
   const dragStartRef = useRef({ sceneX: 0, sceneY: 0, nodeX: 0, nodeY: 0 });
   const dragSessionRef = useRef<{ groupId: string | null }>({ groupId: null });
   const keyboardMoveSessionRef = useRef<{ groupId: string | null; lastAt: number }>({ groupId: null, lastAt: 0 });
+  const altPressedRef = useRef(false);
+  const [bringToFrontPath, setBringToFrontPath] = useState<string | null>(null);
   const privateStateByPath = useMemo(() => {
     const map: Record<
       string,
@@ -90,11 +92,16 @@ export function SceneCanvas({ sceneData }: SceneCanvasProps) {
       offsetY: offset.y
     };
 
-    sceneRendererRef.current.render(sceneData, transform, {
-      byPath: privateStateByPath
-    });
+    sceneRendererRef.current.render(
+      sceneData,
+      transform,
+      {
+        byPath: privateStateByPath
+      },
+      bringToFrontPath
+    );
     gizmoRendererRef.current.render(selectedHit, transform);
-  }, [sceneData, selectedHit, scale, offset, version, privateStateByPath]);
+  }, [sceneData, selectedHit, scale, offset, version, privateStateByPath, bringToFrontPath]);
 
   useEffect(() => {
     const handleResize = () => setOffset((prev) => ({ ...prev }));
@@ -133,6 +140,11 @@ export function SceneCanvas({ sceneData }: SceneCanvasProps) {
     const onKeyDown = (e: KeyboardEvent) => {
       if (isEditableTarget(e.target)) return;
 
+      if (e.key === 'Alt') {
+        altPressedRef.current = true;
+        return;
+      }
+
       let dirX = 0;
       let dirY = 0;
       if (e.key === 'ArrowLeft') dirX = -1;
@@ -160,8 +172,19 @@ export function SceneCanvas({ sceneData }: SceneCanvasProps) {
       updateSelectedNodeProps({ x: nextX, y: nextY }, { groupId });
     };
 
+    const onKeyUp = (e: KeyboardEvent) => {
+      if (e.key === 'Alt') {
+        altPressedRef.current = false;
+        setBringToFrontPath(null);
+      }
+    };
+
     window.addEventListener('keydown', onKeyDown);
-    return () => window.removeEventListener('keydown', onKeyDown);
+    window.addEventListener('keyup', onKeyUp);
+    return () => {
+      window.removeEventListener('keydown', onKeyDown);
+      window.removeEventListener('keyup', onKeyUp);
+    };
   }, [scale, selectedHit, updateSelectedNodeProps]);
 
   const stopPanning = () => {
@@ -195,8 +218,30 @@ export function SceneCanvas({ sceneData }: SceneCanvasProps) {
       const scenePoint = getScenePointFromClient(e.clientX, e.clientY);
       if (!scenePoint) return;
 
+      if (altPressedRef.current) {
+        const hits = hitTestSceneNodeAll(sceneData, 0, 0, scenePoint.x, scenePoint.y, privateStateByPath);
+        if (hits.length === 0) {
+          setSelectedHit(null);
+          setBringToFrontPath(null);
+          return;
+        }
+
+        let nextHit = hits[0];
+        if (selectedHit?.path) {
+          const currentIndex = hits.findIndex((item) => item.path === selectedHit.path);
+          if (currentIndex >= 0) {
+            nextHit = hits[(currentIndex + 1) % hits.length];
+          }
+        }
+
+        setSelectedHit(nextHit);
+        setBringToFrontPath(nextHit.path);
+        return;
+      }
+
       const hit = hitTestSceneNode(sceneData, 0, 0, scenePoint.x, scenePoint.y, privateStateByPath);
       setSelectedHit(hit);
+      setBringToFrontPath(null);
 
       // Drag starts only when pressing down on an already-selected node.
       if (hit && selectedHit && hit.node === selectedHit.node) {

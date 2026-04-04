@@ -19,6 +19,13 @@ export interface ReferenceLayerOptions {
   byPath?: Record<string, PrivateRenderState>;
 }
 
+interface NodeBounds {
+  x: number;
+  y: number;
+  w: number;
+  h: number;
+}
+
 const DEFAULT_PRIVATE_RENDER_STATE: PrivateRenderState = {
   nodeVisible: true,
   nodeOpacity: 1,
@@ -92,6 +99,53 @@ function composePrivateRenderState(parentState: PrivateRenderState, localState: 
   };
 }
 
+function resolveNodeBounds(node: SceneNode, px: number, py: number): NodeBounds {
+  const p = node.props || {};
+  const x = px + (p.x || 0);
+  const y = py + (p.y || 0);
+  const w = p.width || 0;
+  const h = p.height || 0;
+
+  let actualW = w;
+  let actualH = h;
+  let actualX = x;
+  let actualY = y;
+
+  if ((node.type === 'Image' || node.type === 'Sprite') && (p.skin || p.texture)) {
+    const img = imageCache[p.skin || p.texture];
+    if (img) {
+      actualW = w || img.width;
+      actualH = h || img.height;
+    }
+  } else if (node.type === 'Label') {
+    const fontSize = p.fontSize || 20;
+    const metrics = measureLabelText(p.text || '', fontSize);
+    actualH = h || metrics.height;
+    actualW = w || metrics.width;
+
+    if (!w) {
+      if (p.align === 'center') actualX = x - actualW / 2;
+      else if (p.align === 'right') actualX = x - actualW;
+    }
+  } else if (node.type === 'Scene' || node.type === 'View' || node.type === 'Dialog') {
+    actualW = p.width || (node.type === 'Scene' ? 800 : 0);
+    actualH = p.height || (node.type === 'Scene' ? 600 : 0);
+  }
+
+  return { x: actualX, y: actualY, w: actualW, h: actualH };
+}
+
+interface BringToFrontState {
+  path: string | null;
+  deferred: null | {
+    node: SceneNode;
+    px: number;
+    py: number;
+    path: string;
+    inheritedPrivateState: PrivateRenderState;
+  };
+}
+
 export class SceneRenderer {
   private readonly canvas: HTMLCanvasElement;
   private readonly ctx: CanvasRenderingContext2D;
@@ -111,7 +165,12 @@ export class SceneRenderer {
     if (this.canvas.height !== height) this.canvas.height = height;
   }
 
-  render(sceneData: SceneNode | null, transform: ViewTransform, referenceLayer?: ReferenceLayerOptions) {
+  render(
+    sceneData: SceneNode | null,
+    transform: ViewTransform,
+    referenceLayer?: ReferenceLayerOptions,
+    bringToFrontPath?: string | null
+  ) {
     const ctx = this.ctx;
     const width = this.canvas.width;
     const height = this.canvas.height;
@@ -125,7 +184,22 @@ export class SceneRenderer {
     ctx.save();
     ctx.translate(transform.offsetX, transform.offsetY);
     ctx.scale(transform.scale, transform.scale);
-    this.drawNode(sceneData, 0, 0, '0', referenceLayer, DEFAULT_PRIVATE_RENDER_STATE);
+    const bringToFront: BringToFrontState = {
+      path: bringToFrontPath ?? null,
+      deferred: null
+    };
+    this.drawNode(sceneData, 0, 0, '0', referenceLayer, DEFAULT_PRIVATE_RENDER_STATE, bringToFront);
+    if (bringToFront.deferred) {
+      this.drawNode(
+        bringToFront.deferred.node,
+        bringToFront.deferred.px,
+        bringToFront.deferred.py,
+        bringToFront.deferred.path,
+        referenceLayer,
+        bringToFront.deferred.inheritedPrivateState,
+        { path: null, deferred: null }
+      );
+    }
     ctx.restore();
   }
 
@@ -162,7 +236,8 @@ export class SceneRenderer {
     py: number,
     path: string,
     referenceLayer: ReferenceLayerOptions | undefined,
-    inheritedPrivateState: PrivateRenderState
+    inheritedPrivateState: PrivateRenderState,
+    bringToFront: BringToFrontState
   ) {
     const ctx = this.ctx;
     const p = node.props || {};
@@ -173,6 +248,17 @@ export class SceneRenderer {
     const localPrivateState = referenceLayer?.byPath?.[path] ?? DEFAULT_PRIVATE_RENDER_STATE;
     const effectivePrivateState = composePrivateRenderState(inheritedPrivateState, localPrivateState);
     const childInheritedState = effectivePrivateState.affectChildren ? effectivePrivateState : DEFAULT_PRIVATE_RENDER_STATE;
+
+    if (bringToFront.path && bringToFront.path === path) {
+      bringToFront.deferred = {
+        node,
+        px,
+        py,
+        path,
+        inheritedPrivateState
+      };
+      return;
+    }
 
     if (effectivePrivateState.nodeVisible) {
       ctx.save();
@@ -233,7 +319,7 @@ export class SceneRenderer {
     if (!node.child) return;
 
     node.child.forEach((child, index) => {
-      this.drawNode(child, x, y, `${path}.${index}`, referenceLayer, childInheritedState);
+      this.drawNode(child, x, y, `${path}.${index}`, referenceLayer, childInheritedState, bringToFront);
     });
   }
 }
@@ -303,8 +389,6 @@ function hitTestSceneNodeInternal(
   const p = node.props || {};
   const x = px + (p.x || 0);
   const y = py + (p.y || 0);
-  const w = p.width || 0;
-  const h = p.height || 0;
   const localPrivateState = privateByPath?.[path] ?? DEFAULT_PRIVATE_RENDER_STATE;
   const effectivePrivateState = composePrivateRenderState(inheritedPrivateState, localPrivateState);
   const childInheritedState = effectivePrivateState.affectChildren ? effectivePrivateState : DEFAULT_PRIVATE_RENDER_STATE;
@@ -318,93 +402,93 @@ function hitTestSceneNodeInternal(
 
   if (!effectivePrivateState.nodeVisible) return null;
 
-  let actualW = w;
-  let actualH = h;
-  let actualX = x;
-  let actualY = y;
+  const bounds = resolveNodeBounds(node, px, py);
+  if (bounds.w === 0 && bounds.h === 0) return null;
 
-  if ((node.type === 'Image' || node.type === 'Sprite') && (p.skin || p.texture)) {
-    const img = imageCache[p.skin || p.texture];
-    if (img) {
-      actualW = w || img.width;
-      actualH = h || img.height;
-    }
-  } else if (node.type === 'Label') {
-    const fontSize = p.fontSize || 20;
-    const metrics = measureLabelText(p.text || '', fontSize);
-    actualH = h || metrics.height;
-    actualW = w || metrics.width;
-
-    if (!w) {
-      if (p.align === 'center') actualX = x - actualW / 2;
-      else if (p.align === 'right') actualX = x - actualW;
-    }
-  } else if (node.type === 'Scene' || node.type === 'View' || node.type === 'Dialog') {
-    actualW = p.width || (node.type === 'Scene' ? 800 : 0);
-    actualH = p.height || (node.type === 'Scene' ? 600 : 0);
-  }
-
-  if (actualW === 0 && actualH === 0) return null;
-
-  if (targetX >= actualX && targetX <= actualX + actualW && targetY >= actualY && targetY <= actualY + actualH) {
-    return { node, x: actualX, y: actualY, w: actualW, h: actualH };
+  if (targetX >= bounds.x && targetX <= bounds.x + bounds.w && targetY >= bounds.y && targetY <= bounds.y + bounds.h) {
+    return { node, x: bounds.x, y: bounds.y, w: bounds.w, h: bounds.h, path };
   }
 
   return null;
+}
+
+export function hitTestSceneNodeAll(
+  node: SceneNode,
+  px: number,
+  py: number,
+  targetX: number,
+  targetY: number,
+  privateByPath?: Record<string, PrivateRenderState>,
+  path: string = '0'
+): HitResult[] {
+  const hits: HitResult[] = [];
+  hitTestSceneNodeAllInternal(node, px, py, targetX, targetY, privateByPath, path, DEFAULT_PRIVATE_RENDER_STATE, hits);
+  return hits;
+}
+
+function hitTestSceneNodeAllInternal(
+  node: SceneNode,
+  px: number,
+  py: number,
+  targetX: number,
+  targetY: number,
+  privateByPath: Record<string, PrivateRenderState> | undefined,
+  path: string,
+  inheritedPrivateState: PrivateRenderState,
+  hits: HitResult[]
+) {
+  const p = node.props || {};
+  const x = px + (p.x || 0);
+  const y = py + (p.y || 0);
+  const localPrivateState = privateByPath?.[path] ?? DEFAULT_PRIVATE_RENDER_STATE;
+  const effectivePrivateState = composePrivateRenderState(inheritedPrivateState, localPrivateState);
+  const childInheritedState = effectivePrivateState.affectChildren ? effectivePrivateState : DEFAULT_PRIVATE_RENDER_STATE;
+
+  if (node.child) {
+    for (let i = node.child.length - 1; i >= 0; i -= 1) {
+      hitTestSceneNodeAllInternal(node.child[i], x, y, targetX, targetY, privateByPath, `${path}.${i}`, childInheritedState, hits);
+    }
+  }
+
+  if (!effectivePrivateState.nodeVisible) return;
+
+  const bounds = resolveNodeBounds(node, px, py);
+  if (bounds.w === 0 && bounds.h === 0) return;
+
+  if (targetX >= bounds.x && targetX <= bounds.x + bounds.w && targetY >= bounds.y && targetY <= bounds.y + bounds.h) {
+    hits.push({ node, x: bounds.x, y: bounds.y, w: bounds.w, h: bounds.h, path });
+  }
 }
 
 export function resolveHitByNode(
   root: SceneNode,
   targetNode: SceneNode,
   px: number = 0,
-  py: number = 0
+  py: number = 0,
+  path: string = '0'
 ): HitResult | null {
   const p = root.props || {};
   const x = px + (p.x || 0);
   const y = py + (p.y || 0);
-  const w = p.width || 0;
-  const h = p.height || 0;
-
-  let actualW = w;
-  let actualH = h;
-  let actualX = x;
-  let actualY = y;
-
-  if ((root.type === 'Image' || root.type === 'Sprite') && (p.skin || p.texture)) {
-    const img = imageCache[p.skin || p.texture];
-    if (img) {
-      actualW = w || img.width;
-      actualH = h || img.height;
-    }
-  } else if (root.type === 'Label') {
-    const fontSize = p.fontSize || 20;
-    const metrics = measureLabelText(p.text || '', fontSize);
-    actualH = h || metrics.height;
-    actualW = w || metrics.width;
-
-    if (!w) {
-      if (p.align === 'center') actualX = x - actualW / 2;
-      else if (p.align === 'right') actualX = x - actualW;
-    }
-  } else if (root.type === 'Scene' || root.type === 'View' || root.type === 'Dialog') {
-    actualW = p.width || (root.type === 'Scene' ? 800 : 0);
-    actualH = p.height || (root.type === 'Scene' ? 600 : 0);
-  }
+  const bounds = resolveNodeBounds(root, px, py);
 
   if (root === targetNode) {
     return {
       node: root,
-      x: actualX,
-      y: actualY,
-      w: actualW,
-      h: actualH
+      x: bounds.x,
+      y: bounds.y,
+      w: bounds.w,
+      h: bounds.h,
+      path
     };
   }
 
   if (!root.child) return null;
 
-  for (const child of root.child) {
-    const result = resolveHitByNode(child, targetNode, x, y);
+  for (let i = 0; i < root.child.length; i += 1) {
+    const child = root.child[i];
+    if (!child) continue;
+    const result = resolveHitByNode(child, targetNode, x, y, `${path}.${i}`);
     if (result) return result;
   }
 

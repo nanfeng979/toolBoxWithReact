@@ -18,4 +18,5 @@ export interface HitResult {
   y: number;
   w: number;
   h: number;
+  path: string;
 }
