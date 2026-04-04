@@ -47,12 +47,15 @@ export interface AssetExplorerPanelState {
   projectEntries: HostApiEntryItem[];
   projectLoading: boolean;
   projectPaneWidth: number;
+  selectedProjectFilePath: string;
+  assetCacheToken: number;
   externalFolders: FolderOption[];
   selectedExternalFolderKey: string;
   externalRootPath: string;
   externalCurrentPath: string;
   externalEntries: HostApiEntryItem[];
   externalLoading: boolean;
+  selectedExternalFilePath: string;
   lastError: string;
   isDragActive: boolean;
 }
@@ -68,4 +71,5 @@ export interface AssetExplorerHostApi {
   watchDirectory?: (watchId: string, dirPath: string) => Promise<WatchResult>;
   unwatchDirectory?: (watchId: string) => Promise<WatchResult>;
   onDirectoryChanged?: (listener: (payload: unknown) => void) => () => void;
+  copyFile?: (srcPath: string, destPath: string) => Promise<{ success: boolean; error?: string }>;
 }

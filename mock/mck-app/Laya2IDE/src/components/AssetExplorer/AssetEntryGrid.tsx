@@ -17,10 +17,25 @@ interface AssetEntryGridProps {
   currentPath: string;
   rootPath: string;
   onOpenFolder: (path: string) => void;
+  selectedFilePath: string;
+  onSelectFile: (path: string) => void;
+  onClearSelection: () => void;
+  assetCacheToken: number;
 }
 
 export function AssetEntryGrid(props: AssetEntryGridProps) {
-  const { entries, loading, emptyLabel, currentPath, rootPath, onOpenFolder } = props;
+  const {
+    entries,
+    loading,
+    emptyLabel,
+    currentPath,
+    rootPath,
+    onOpenFolder,
+    selectedFilePath,
+    onSelectFile,
+    onClearSelection,
+    assetCacheToken
+  } = props;
 
   if (loading) {
     return <div style={{ padding: 12, color: '#8d8d8d', fontSize: 12 }}>加载中...</div>;
@@ -39,6 +54,7 @@ export function AssetEntryGrid(props: AssetEntryGridProps) {
 
   return (
     <div
+      onClick={() => onClearSelection()}
       style={{
         padding: 10,
         display: 'grid',
@@ -57,6 +73,8 @@ export function AssetEntryGrid(props: AssetEntryGridProps) {
         const isParentEntry = (item as { isParent?: boolean }).isParent === true;
         const extension = item.isDirectory ? 'folder' : extname(item.name);
         const isImageFile = !item.isDirectory && IMAGE_EXTENSIONS.has(extension);
+        const isFile = !item.isDirectory && !isParentEntry;
+        const isSelected = isFile && selectedFilePath && selectedFilePath === item.path;
         return (
           <div
             key={`${item.path}:${item.name}`}
@@ -65,15 +83,25 @@ export function AssetEntryGrid(props: AssetEntryGridProps) {
                 onOpenFolder(item.path);
               }
             }}
+            onClick={(event) => {
+              event.stopPropagation();
+              if (!isFile) return;
+              if (isSelected) {
+                onClearSelection();
+                return;
+              }
+              onSelectFile(item.path);
+            }}
             style={{
-              border: '1px solid #3a3d43',
+              border: isSelected ? '1px solid #58a6ff' : '1px solid #3a3d43',
               borderRadius: 6,
-              background: 'rgba(255,255,255,0.02)',
+              background: isSelected ? 'rgba(88, 166, 255, 0.18)' : 'rgba(255,255,255,0.02)',
+              boxShadow: isSelected ? '0 0 0 1px rgba(88, 166, 255, 0.25) inset' : 'none',
               padding: 8,
               display: 'flex',
               flexDirection: 'column',
               gap: 6,
-              cursor: item.isDirectory ? 'pointer' : 'default',
+              cursor: item.isDirectory ? 'pointer' : isFile ? 'pointer' : 'default',
               alignSelf: 'start'
             }}
             title={item.path}
@@ -92,7 +120,7 @@ export function AssetEntryGrid(props: AssetEntryGridProps) {
             >
               {isImageFile ? (
                 <img
-                  src={toAssetUrl(item.path)}
+                  src={`${toAssetUrl(item.path)}?v=${assetCacheToken}`}
                   alt={item.name}
                   style={{
                     maxWidth: '100%',

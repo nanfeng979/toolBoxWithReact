@@ -2,10 +2,12 @@ import React from 'react';
 
 interface AssetFunctionPanelProps {
   onAddExternalFolder: () => void;
+  onApplyNewFile: () => void;
+  canApplyNewFile: boolean;
 }
 
 export const AssetFunctionPanel = React.forwardRef<HTMLDivElement, AssetFunctionPanelProps>((props, ref) => {
-  const { onAddExternalFolder } = props;
+  const { onAddExternalFolder, onApplyNewFile, canApplyNewFile } = props;
 
   return (
     <div
@@ -32,6 +34,23 @@ export const AssetFunctionPanel = React.forwardRef<HTMLDivElement, AssetFunction
         功能区
       </div>
       <div style={{ display: 'flex', flexDirection: 'column', gap: 8, padding: 12 }}>
+        <button
+          type="button"
+          onClick={onApplyNewFile}
+          disabled={!canApplyNewFile}
+          style={{
+            background: canApplyNewFile ? '#284b7b' : '#2b2d33',
+            border: '1px solid #3b3d44',
+            color: canApplyNewFile ? '#e6f0ff' : '#7f858f',
+            borderRadius: 4,
+            fontSize: 12,
+            padding: '4px 10px',
+            cursor: canApplyNewFile ? 'pointer' : 'not-allowed',
+            whiteSpace: 'nowrap'
+          }}
+        >
+          应用新的文件
+        </button>
         <button
           type="button"
           onClick={onAddExternalFolder}

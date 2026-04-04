@@ -45,12 +45,15 @@ export class AssetExplorerPanel extends React.PureComponent<AssetExplorerPanelPr
     projectEntries: [],
     projectLoading: false,
     projectPaneWidth: 0,
+    selectedProjectFilePath: '',
+    assetCacheToken: 0,
     externalFolders: [],
     selectedExternalFolderKey: '',
     externalRootPath: '',
     externalCurrentPath: '',
     externalEntries: [],
     externalLoading: false,
+    selectedExternalFilePath: '',
     lastError: '',
     isDragActive: false
   };
@@ -126,7 +129,8 @@ export class AssetExplorerPanel extends React.PureComponent<AssetExplorerPanelPr
       const changes = event.changes || [];
       if (!changes.length) return;
       this.setState((prev) => ({
-        projectEntries: applyDirChanges(prev.projectEntries, changes)
+        projectEntries: applyDirChanges(prev.projectEntries, changes),
+        assetCacheToken: prev.assetCacheToken + 1
       }));
       return;
     }
@@ -141,7 +145,8 @@ export class AssetExplorerPanel extends React.PureComponent<AssetExplorerPanelPr
       const changes = event.changes || [];
       if (!changes.length) return;
       this.setState((prev) => ({
-        externalEntries: applyDirChanges(prev.externalEntries, changes)
+        externalEntries: applyDirChanges(prev.externalEntries, changes),
+        assetCacheToken: prev.assetCacheToken + 1
       }));
     }
   };
@@ -371,7 +376,8 @@ export class AssetExplorerPanel extends React.PureComponent<AssetExplorerPanelPr
     this.setState(
       {
         selectedProjectFolderKey: key,
-        projectCurrentPath: selectedOption.path
+        projectCurrentPath: selectedOption.path,
+        selectedProjectFilePath: ''
       },
       () => {
         void this.loadProjectEntries();
@@ -388,7 +394,8 @@ export class AssetExplorerPanel extends React.PureComponent<AssetExplorerPanelPr
       {
         selectedExternalFolderKey: key,
         externalRootPath: selectedFolder.path,
-        externalCurrentPath: selectedFolder.path
+        externalCurrentPath: selectedFolder.path,
+        selectedExternalFilePath: ''
       },
       () => {
         void this.loadExternalEntries();
@@ -414,7 +421,8 @@ export class AssetExplorerPanel extends React.PureComponent<AssetExplorerPanelPr
         {
           selectedExternalFolderKey: key,
           externalRootPath: picked,
-          externalCurrentPath: picked
+          externalCurrentPath: picked,
+          selectedExternalFilePath: ''
         },
         () => {
           void this.loadExternalEntries();
@@ -434,7 +442,8 @@ export class AssetExplorerPanel extends React.PureComponent<AssetExplorerPanelPr
         externalFolders: [...prev.externalFolders, folder],
         selectedExternalFolderKey: key,
         externalRootPath: picked,
-        externalCurrentPath: picked
+        externalCurrentPath: picked,
+        selectedExternalFilePath: ''
       }),
       () => {
         void this.loadExternalEntries();
@@ -521,7 +530,8 @@ export class AssetExplorerPanel extends React.PureComponent<AssetExplorerPanelPr
         selectedExternalFolderKey: rest[0]?.key || '',
         externalRootPath: rest[0]?.path || '',
         externalCurrentPath: rest[0]?.path || '',
-        externalEntries: []
+        externalEntries: [],
+        selectedExternalFilePath: ''
       },
       () => {
         if (rest.length) {
@@ -541,7 +551,8 @@ export class AssetExplorerPanel extends React.PureComponent<AssetExplorerPanelPr
       this.setState(
         {
           projectCurrentPath: targetPath,
-          selectedProjectFolderKey: (baseHit || tempHit)!.key
+          selectedProjectFolderKey: (baseHit || tempHit)!.key,
+          selectedProjectFilePath: ''
         },
         () => {
           void this.loadProjectEntries();
@@ -565,7 +576,8 @@ export class AssetExplorerPanel extends React.PureComponent<AssetExplorerPanelPr
         return {
           projectTemporaryFolderOptions: exists ? prev.projectTemporaryFolderOptions : [...prev.projectTemporaryFolderOptions, tempOption],
           selectedProjectFolderKey: tempOption.key,
-          projectCurrentPath: targetPath
+          projectCurrentPath: targetPath,
+          selectedProjectFilePath: ''
         };
       },
       () => {
@@ -580,9 +592,52 @@ export class AssetExplorerPanel extends React.PureComponent<AssetExplorerPanelPr
 
   openExternalFolder = (targetPath: string) => {
     if (!isWithinRoot(targetPath, this.state.externalRootPath)) return;
-    this.setState({ externalCurrentPath: targetPath }, () => {
+    this.setState({ externalCurrentPath: targetPath, selectedExternalFilePath: '' }, () => {
       void this.loadExternalEntries();
     });
+  };
+
+  selectProjectFile = (path: string) => {
+    this.setState({ selectedProjectFilePath: path });
+  };
+
+  clearProjectSelection = () => {
+    if (!this.state.selectedProjectFilePath) return;
+    this.setState({ selectedProjectFilePath: '' });
+  };
+
+  selectExternalFile = (path: string) => {
+    this.setState({ selectedExternalFilePath: path });
+  };
+
+  clearExternalSelection = () => {
+    if (!this.state.selectedExternalFilePath) return;
+    this.setState({ selectedExternalFilePath: '' });
+  };
+
+  applyNewFile = async () => {
+    const { selectedProjectFilePath, selectedExternalFilePath } = this.state;
+    if (!selectedProjectFilePath || !selectedExternalFilePath) return;
+
+    const hostApi = this.getHostApi();
+    if (!hostApi?.copyFile) {
+      this.setState({ lastError: 'Host API copyFile is not available.' });
+      return;
+    }
+
+    this.setState({ lastError: '' });
+    const result = await hostApi.copyFile(selectedExternalFilePath, selectedProjectFilePath);
+    if (!result?.success) {
+      this.setState({ lastError: result?.error || 'Copy failed.' });
+      return;
+    }
+
+    this.setState((prev) => ({
+      selectedProjectFilePath: '',
+      selectedExternalFilePath: '',
+      assetCacheToken: prev.assetCacheToken + 1
+    }));
+    void this.loadProjectEntries();
   };
 
   beginSplitDrag = (e: React.MouseEvent<HTMLDivElement>) => {
@@ -613,7 +668,10 @@ export class AssetExplorerPanel extends React.PureComponent<AssetExplorerPanelPr
       externalEntries,
       externalLoading,
       lastError,
-      isDragActive
+      isDragActive,
+      selectedProjectFilePath,
+      selectedExternalFilePath,
+      assetCacheToken
     } = this.state;
 
     const hasExternalFolders = externalFolders.length > 0;
@@ -730,6 +788,10 @@ export class AssetExplorerPanel extends React.PureComponent<AssetExplorerPanelPr
               currentPath={projectCurrentPath}
               rootPath={projectRootPath}
               onOpenFolder={this.openProjectFolder}
+              selectedFilePath={selectedProjectFilePath}
+              onSelectFile={this.selectProjectFile}
+              onClearSelection={this.clearProjectSelection}
+              assetCacheToken={assetCacheToken}
             />
           </div>
 
@@ -812,12 +874,21 @@ export class AssetExplorerPanel extends React.PureComponent<AssetExplorerPanelPr
                   currentPath={externalCurrentPath}
                   rootPath={externalRootPath}
                   onOpenFolder={this.openExternalFolder}
+                  selectedFilePath={selectedExternalFilePath}
+                  onSelectFile={this.selectExternalFile}
+                  onClearSelection={this.clearExternalSelection}
+                  assetCacheToken={assetCacheToken}
                 />
               </div>
             </>
           )}
 
-          <AssetFunctionPanel ref={this.functionPanelRef} onAddExternalFolder={this.addExternalFolder} />
+          <AssetFunctionPanel
+            ref={this.functionPanelRef}
+            onAddExternalFolder={this.addExternalFolder}
+            onApplyNewFile={this.applyNewFile}
+            canApplyNewFile={Boolean(selectedProjectFilePath && selectedExternalFilePath)}
+          />
         </div>
 
         {lastError && (
