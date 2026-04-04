@@ -484,11 +484,15 @@ app.whenReady().then(() => {
 
   ipcMain.handle('host:open-directory', async () => {
     if (!win) return null;
+    const lastPath = await explorerService.getValidPath('lastHostOpenDirectoryPath');
     const { canceled, filePaths } = await dialog.showOpenDialog(win, {
-      properties: ['openDirectory']
+      properties: ['openDirectory'],
+      defaultPath: lastPath
     });
     if (canceled || filePaths.length === 0) return null;
-    return filePaths[0];
+    const pickedPath = filePaths[0];
+    await explorerService.savePath('lastHostOpenDirectoryPath', pickedPath);
+    return pickedPath;
   });
 
   ipcMain.handle('host:read-dir', async (_, dirPath: string) => {
