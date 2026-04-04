@@ -34,6 +34,7 @@ export class AssetExplorerPanel extends React.PureComponent<AssetExplorerPanelPr
   private offDirectoryChanged: (() => void) | null = null;
   private projectWatchPath = '';
   private externalWatchPath = '';
+  private dropDepth = 0;
 
   state: AssetExplorerPanelState = {
     projectFolderOptions: [],
@@ -50,7 +51,8 @@ export class AssetExplorerPanel extends React.PureComponent<AssetExplorerPanelPr
     externalCurrentPath: '',
     externalEntries: [],
     externalLoading: false,
-    lastError: ''
+    lastError: '',
+    isDragActive: false
   };
 
   async componentDidMount() {
@@ -401,6 +403,10 @@ export class AssetExplorerPanel extends React.PureComponent<AssetExplorerPanelPr
     const picked = await hostApi.openDirectoryDialog();
     if (!picked) return;
 
+    this.addExternalFolderFromPath(picked);
+  };
+
+  addExternalFolderFromPath = (picked: string) => {
     const key = normalizeSlashes(picked);
     const exists = this.state.externalFolders.some((f) => f.key === key);
     if (exists) {
@@ -434,6 +440,74 @@ export class AssetExplorerPanel extends React.PureComponent<AssetExplorerPanelPr
         void this.loadExternalEntries();
       }
     );
+  };
+
+  hasFileDrag = (event: React.DragEvent<HTMLElement>) => {
+    const dt = event.dataTransfer;
+    if (!dt) return false;
+    if (dt.items && dt.items.length) {
+      return Array.from(dt.items).some((item) => item.kind === 'file');
+    }
+    return dt.files && dt.files.length > 0;
+  };
+
+  handleDragEnter = (event: React.DragEvent<HTMLElement>) => {
+    if (!this.hasFileDrag(event)) return;
+    event.preventDefault();
+    this.dropDepth += 1;
+    if (!this.state.isDragActive) {
+      this.setState({ isDragActive: true });
+    }
+  };
+
+  handleDragOver = (event: React.DragEvent<HTMLElement>) => {
+    if (!this.hasFileDrag(event)) return;
+    event.preventDefault();
+    event.dataTransfer.dropEffect = 'copy';
+  };
+
+  handleDragLeave = (event: React.DragEvent<HTMLElement>) => {
+    if (!this.hasFileDrag(event)) return;
+    event.preventDefault();
+    this.dropDepth = Math.max(0, this.dropDepth - 1);
+    if (this.dropDepth === 0 && this.state.isDragActive) {
+      this.setState({ isDragActive: false });
+    }
+  };
+
+  handleDrop = async (event: React.DragEvent<HTMLElement>) => {
+    if (!this.hasFileDrag(event)) return;
+    event.preventDefault();
+    this.dropDepth = 0;
+    if (this.state.isDragActive) {
+      this.setState({ isDragActive: false });
+    }
+
+    const dt = event.dataTransfer;
+    if (!dt) return;
+
+    const pickedPaths = new Set<string>();
+
+    if (dt.items && dt.items.length) {
+      for (const item of Array.from(dt.items)) {
+        if (item.kind !== 'file') continue;
+        const entry = (item as any).webkitGetAsEntry?.();
+        if (entry && !entry.isDirectory) continue;
+        const file = item.getAsFile() as (File & { path?: string }) | null;
+        const filePath = file?.path;
+        if (filePath) pickedPaths.add(filePath);
+      }
+    }
+
+    if (pickedPaths.size === 0 && dt.files && dt.files.length) {
+      for (const file of Array.from(dt.files) as Array<File & { path?: string }>) {
+        if (file.path) pickedPaths.add(file.path);
+      }
+    }
+
+    if (!pickedPaths.size) return;
+
+    pickedPaths.forEach((path) => this.addExternalFolderFromPath(path));
   };
 
   removeSelectedExternalFolder = () => {
@@ -538,7 +612,8 @@ export class AssetExplorerPanel extends React.PureComponent<AssetExplorerPanelPr
       externalCurrentPath,
       externalEntries,
       externalLoading,
-      lastError
+      lastError,
+      isDragActive
     } = this.state;
 
     const hasExternalFolders = externalFolders.length > 0;
@@ -557,6 +632,10 @@ export class AssetExplorerPanel extends React.PureComponent<AssetExplorerPanelPr
     return (
       <section
         ref={this.rootRef}
+        onDragEnter={this.handleDragEnter}
+        onDragOver={this.handleDragOver}
+        onDragLeave={this.handleDragLeave}
+        onDrop={this.handleDrop}
         style={{
           position: 'absolute',
           left: 0,
@@ -571,6 +650,20 @@ export class AssetExplorerPanel extends React.PureComponent<AssetExplorerPanelPr
           zIndex: 2
         }}
       >
+        {isDragActive && (
+          <div
+            style={{
+              position: 'absolute',
+              inset: 6,
+              borderRadius: 10,
+              border: '2px dashed rgba(88, 166, 255, 0.9)',
+              background: 'rgba(88, 166, 255, 0.08)',
+              boxShadow: '0 0 0 2px rgba(0,0,0,0.35) inset',
+              pointerEvents: 'none',
+              zIndex: 3
+            }}
+          />
+        )}
         <div
           style={{
             padding: '10px 12px',

@@ -54,6 +54,7 @@ export interface AssetExplorerPanelState {
   externalEntries: HostApiEntryItem[];
   externalLoading: boolean;
   lastError: string;
+  isDragActive: boolean;
 }
 
 export interface BreadcrumbItem {
