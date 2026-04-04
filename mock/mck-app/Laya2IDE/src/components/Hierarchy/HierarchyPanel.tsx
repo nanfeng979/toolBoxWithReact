@@ -2,7 +2,7 @@ import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { useSceneStore } from '../../store/sceneStore';
 import { SceneNode } from '../../types/scene';
 import { resolveHitByNode } from '../../core/Renderer.ts';
-import { createImageUIComponent } from '../../core/componentCreators';
+import { createImageUIComponent, createLabelUIComponent } from '../../core/componentCreators';
 
 interface TreeRow {
   path: string;
@@ -125,6 +125,41 @@ export function HierarchyPanel() {
 
     const parentCompId = toNumberOrZero(row.node.compId);
     const nextNode = createImageUIComponent({
+      compId: nextCompId,
+      parentCompId,
+      depth: row.depth + 1
+    });
+    row.node.child.push(nextNode);
+    row.node.hasChild = true;
+    row.node.isDirectory = row.node.hasChild;
+
+    const nextCollapsed = new Set(collapsedPaths);
+    nextCollapsed.delete(row.path);
+    setCollapsedPaths(nextCollapsed);
+
+    const hit = resolveHitByNode(sceneData, nextNode);
+    if (hit) setSelectedHit(hit);
+    else setSelectedHit({ node: nextNode, x: 0, y: 0, w: 0, h: 0 });
+
+    setDirty(true);
+    bumpVersion();
+    setContextMenu(null);
+  };
+
+  const createLabelUIAtRow = (row: TreeRow) => {
+    if (!sceneData) return;
+
+    if (!Array.isArray(row.node.child)) {
+      row.node.child = [];
+    }
+
+    const rootRecord = sceneData as unknown as Record<string, unknown>;
+    const currentMaxId = toNumberOrZero(rootRecord.maxID);
+    const nextCompId = currentMaxId;
+    rootRecord.maxID = currentMaxId + 1;
+
+    const parentCompId = toNumberOrZero(row.node.compId);
+    const nextNode = createLabelUIComponent({
       compId: nextCompId,
       parentCompId,
       depth: row.depth + 1
@@ -351,6 +386,26 @@ export function HierarchyPanel() {
             }}
           >
             创建 ImageUI
+          </button>
+          <button
+            type="button"
+            onClick={(e) => {
+              e.stopPropagation();
+              createLabelUIAtRow(contextMenu.row);
+            }}
+            style={{
+              width: '100%',
+              border: 'none',
+              borderRadius: 4,
+              background: 'transparent',
+              color: '#d4d4d4',
+              textAlign: 'left',
+              fontSize: 12,
+              padding: '6px 8px',
+              cursor: 'pointer'
+            }}
+          >
+            创建 Label
           </button>
           <button
             type="button"

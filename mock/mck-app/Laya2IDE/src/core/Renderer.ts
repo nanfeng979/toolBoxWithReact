@@ -146,7 +146,7 @@ export class SceneRenderer {
         const text = (p.text || '').replace(/\\n/g, '\n');
         const fontSize = p.fontSize || 20;
         ctx.font = `${fontSize}px sans-serif`;
-        ctx.fillStyle = p.color || '#ffffff';
+        ctx.fillStyle = p.color || '#000000';
         ctx.textBaseline = 'top';
 
         let alignOffsetX = 0;

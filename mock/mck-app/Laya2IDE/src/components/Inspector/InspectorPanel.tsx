@@ -179,7 +179,7 @@ export function InspectorPanel() {
         >
           <div style={{ color: '#9aa0a6', fontSize: 11, marginBottom: 10 }}>LABEL</div>
           <TextFieldRow label="text" value={String(selectedProps.text || '')} onCommit={(v) => updateTextProp('text', v)} />
-          <TextFieldRow label="color" value={String(selectedProps.color || '#ffffff')} onCommit={(v) => updateTextProp('color', v)} />
+          <TextFieldRow label="color" value={String(selectedProps.color || '#000000')} onCommit={(v) => updateTextProp('color', v)} />
           <FieldRow label="font" value={Number(selectedProps.fontSize || 20)} onCommit={(v) => updateSelectedNodeProps({ fontSize: v })} />
         </div>
       )}
