@@ -2,6 +2,19 @@ import React from 'react';
 import { IMAGE_EXTENSIONS } from './assetExplorerConstants';
 import { HostApiEntryItem } from './AssetExplorerTypes';
 import { canGoParent, dirname, extname, stripExt, toAssetUrl } from './assetExplorerPathUtils';
+import {
+  assetEntryCardSelectedStyle,
+  assetEntryCardStyle,
+  assetEntryExtStyle,
+  assetEntryFileIconStyle,
+  assetEntryFolderIconStyle,
+  assetEntryGridLoadingStyle,
+  assetEntryGridRootStyle,
+  assetEntryMetaStyle,
+  assetEntryNameStyle,
+  assetEntryPreviewImageStyle,
+  assetEntryPreviewStyle
+} from './AssetEntryGrid.styles';
 
 interface ParentEntry {
   name: '..';
@@ -38,7 +51,7 @@ export function AssetEntryGrid(props: AssetEntryGridProps) {
   } = props;
 
   if (loading) {
-    return <div style={{ padding: 12, color: '#8d8d8d', fontSize: 12 }}>加载中...</div>;
+    return <div style={assetEntryGridLoadingStyle}>加载中...</div>;
   }
 
   const canBack = canGoParent(currentPath, rootPath);
@@ -49,25 +62,13 @@ export function AssetEntryGrid(props: AssetEntryGridProps) {
   displayEntries.push(...entries);
 
   if (!displayEntries.length) {
-    return <div style={{ padding: 12, color: '#8d8d8d', fontSize: 12 }}>{emptyLabel}</div>;
+    return <div style={assetEntryGridLoadingStyle}>{emptyLabel}</div>;
   }
 
   return (
     <div
       onClick={() => onClearSelection()}
-      style={{
-        padding: 10,
-        display: 'grid',
-        gridTemplateColumns: 'repeat(auto-fill, 104px)',
-        gridAutoRows: '124px',
-        justifyContent: 'start',
-        alignContent: 'start',
-        alignItems: 'start',
-        gap: 10,
-        overflow: 'auto',
-        minHeight: 0,
-        flex: 1
-      }}
+      style={assetEntryGridRootStyle}
     >
       {displayEntries.map((item) => {
         const isParentEntry = (item as { isParent?: boolean }).isParent === true;
@@ -86,60 +87,33 @@ export function AssetEntryGrid(props: AssetEntryGridProps) {
             onClick={(event) => {
               event.stopPropagation();
               if (!isFile) return;
-              if (isSelected) {
-                onClearSelection();
-                return;
-              }
-              onSelectFile(item.path);
+              if (isSelected) onClearSelection();
+              else onSelectFile(item.path);
             }}
             style={{
-              border: isSelected ? '1px solid #58a6ff' : '1px solid #3a3d43',
-              borderRadius: 6,
-              background: isSelected ? 'rgba(88, 166, 255, 0.18)' : 'rgba(255,255,255,0.02)',
-              boxShadow: isSelected ? '0 0 0 1px rgba(88, 166, 255, 0.25) inset' : 'none',
-              padding: 8,
-              display: 'flex',
-              flexDirection: 'column',
-              gap: 6,
-              cursor: item.isDirectory ? 'pointer' : isFile ? 'pointer' : 'default',
-              alignSelf: 'start'
+              ...(isSelected ? { ...assetEntryCardStyle, ...assetEntryCardSelectedStyle } : assetEntryCardStyle),
+              cursor: item.isDirectory || isFile ? 'pointer' : 'default'
             }}
             title={item.path}
           >
-            <div
-              style={{
-                height: 68,
-                display: 'flex',
-                alignItems: 'center',
-                justifyContent: 'center',
-                background: '#1a1b1f',
-                border: '1px solid #2f3238',
-                borderRadius: 4,
-                overflow: 'hidden'
-              }}
-            >
+            <div style={assetEntryPreviewStyle}>
               {isImageFile ? (
                 <img
                   src={`${toAssetUrl(item.path)}?v=${assetCacheToken}`}
                   alt={item.name}
-                  style={{
-                    maxWidth: '100%',
-                    maxHeight: '100%',
-                    objectFit: 'contain',
-                    display: 'block'
-                  }}
+                  style={assetEntryPreviewImageStyle}
                 />
               ) : (
-                <span style={{ fontSize: 26, color: item.isDirectory ? '#d7b76d' : '#90a8c8', lineHeight: 1 }}>
+                <span style={item.isDirectory ? assetEntryFolderIconStyle : assetEntryFileIconStyle}>
                   {item.isDirectory ? '📁' : '📄'}
                 </span>
               )}
             </div>
-            <div style={{ fontSize: 11, color: '#c9c9c9', lineHeight: 1.2 }}>
-              <div style={{ whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+            <div style={assetEntryMetaStyle}>
+              <div style={assetEntryNameStyle}>
                 {isParentEntry ? '..' : stripExt(item.name)}
               </div>
-              <div style={{ color: '#8d8d8d' }}>{isParentEntry ? 'parent' : extension || '(no ext)'}</div>
+              <div style={assetEntryExtStyle}>{isParentEntry ? 'parent' : extension || '(no ext)'}</div>
             </div>
           </div>
         );

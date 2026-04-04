@@ -1,6 +1,11 @@
 import React from 'react';
 import { BreadcrumbItem } from './AssetExplorerTypes';
 import { getProjectRelativePath, isWithinRoot, joinPath } from './assetExplorerPathUtils';
+import {
+  assetBreadcrumbButtonStyle,
+  assetBreadcrumbDividerStyle,
+  assetBreadcrumbRootStyle
+} from './assetExplorerBreadcrumb.styles';
 
 export function buildBreadcrumbItems(rootPath: string, currentPath: string) {
   if (!rootPath || !currentPath || !isWithinRoot(currentPath, rootPath)) return [] as BreadcrumbItem[];
@@ -54,31 +59,14 @@ export function renderBreadcrumbButtons(items: BreadcrumbItem[], onClick: (path:
   if (!items.length) return null;
 
   return (
-    <div
-      style={{
-        display: 'flex',
-        alignItems: 'center',
-        gap: 4,
-        minWidth: 0,
-        overflowX: 'auto',
-        whiteSpace: 'nowrap'
-      }}
-    >
+    <div style={assetBreadcrumbRootStyle}>
       {items.map((item, index) => (
         <React.Fragment key={item.path}>
-          {index > 0 && <span style={{ color: '#66707c' }}>/</span>}
+          {index > 0 && <span style={assetBreadcrumbDividerStyle}>/</span>}
           <button
             type="button"
             onClick={() => onClick(item.path)}
-            style={{
-              background: 'transparent',
-              border: 'none',
-              color: '#9cb2ce',
-              padding: 0,
-              cursor: 'pointer',
-              fontSize: 11,
-              flex: '0 0 auto'
-            }}
+            style={assetBreadcrumbButtonStyle}
             title={item.path}
           >
             {item.label}

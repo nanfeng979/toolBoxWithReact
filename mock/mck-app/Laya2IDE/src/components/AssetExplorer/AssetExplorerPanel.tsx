@@ -1,9 +1,27 @@
-﻿import React from 'react';
+import React from 'react';
 import { AssetBreadcrumbArea } from './AssetBreadcrumbArea';
 import { AssetEntryGrid } from './AssetEntryGrid';
 import { AssetFunctionPanel } from './AssetFunctionPanel';
 import { DEFAULT_PROJECT_PANE_WIDTH, EXTERNAL_WATCH_ID, PROJECT_WATCH_ID } from './assetExplorerConstants';
 import { applyDirChanges, collectSkinFolders, sortEntries } from './assetExplorerEntryUtils';
+import {
+  assetExplorerBreadcrumbWrapStyle,
+  assetExplorerContentStyle,
+  assetExplorerErrorStyle,
+  assetExplorerExternalActionWrapStyle,
+  assetExplorerExternalPaneStyle,
+  assetExplorerExternalSelectStyle,
+  assetExplorerHeaderLabelStyle,
+  assetExplorerHeaderLeftStyle,
+  assetExplorerHeaderStyle,
+  assetExplorerProjectSelectStyle,
+  assetExplorerRemoveButtonStyle,
+  assetExplorerSplitStyle,
+  assetExplorerTitleStyle,
+  getAssetExplorerProjectPaneStyle,
+  getAssetExplorerRootStyle,
+  assetExplorerDropMaskStyle
+} from './AssetExplorerPanel.styles';
 import {
   basename,
   extname,
@@ -272,6 +290,14 @@ export class AssetExplorerPanel extends React.PureComponent<AssetExplorerPanelPr
     return (window as Window & { hostApi?: AssetExplorerHostApi }).hostApi;
   }
 
+  reloadProjectEntries = () => {
+    void this.loadProjectEntries();
+  };
+
+  reloadExternalEntries = () => {
+    void this.loadExternalEntries();
+  };
+
   buildProjectFolderOptions() {
     const assetsRoot = findLayaAssetsFolder(this.props.sceneFilePath);
     if (!assetsRoot) return [] as FolderOption[];
@@ -331,9 +357,7 @@ export class AssetExplorerPanel extends React.PureComponent<AssetExplorerPanelPr
         projectRootPath: selectedOption.path,
         projectCurrentPath: selectedOption.path
       },
-      () => {
-        void this.loadProjectEntries();
-      }
+      this.reloadProjectEntries
     );
   }
 
@@ -389,9 +413,7 @@ export class AssetExplorerPanel extends React.PureComponent<AssetExplorerPanelPr
         projectCurrentPath: selectedOption.path,
         selectedProjectFilePath: ''
       },
-      () => {
-        void this.loadProjectEntries();
-      }
+      this.reloadProjectEntries
     );
   };
 
@@ -407,9 +429,7 @@ export class AssetExplorerPanel extends React.PureComponent<AssetExplorerPanelPr
         externalCurrentPath: selectedFolder.path,
         selectedExternalFilePath: ''
       },
-      () => {
-        void this.loadExternalEntries();
-      }
+      this.reloadExternalEntries
     );
   };
 
@@ -434,9 +454,7 @@ export class AssetExplorerPanel extends React.PureComponent<AssetExplorerPanelPr
           externalCurrentPath: picked,
           selectedExternalFilePath: ''
         },
-        () => {
-          void this.loadExternalEntries();
-        }
+        this.reloadExternalEntries
       );
       return;
     }
@@ -455,9 +473,7 @@ export class AssetExplorerPanel extends React.PureComponent<AssetExplorerPanelPr
         externalCurrentPath: picked,
         selectedExternalFilePath: ''
       }),
-      () => {
-        void this.loadExternalEntries();
-      }
+      this.reloadExternalEntries
     );
   };
 
@@ -564,9 +580,7 @@ export class AssetExplorerPanel extends React.PureComponent<AssetExplorerPanelPr
           selectedProjectFolderKey: (baseHit || tempHit)!.key,
           selectedProjectFilePath: ''
         },
-        () => {
-          void this.loadProjectEntries();
-        }
+        this.reloadProjectEntries
       );
       return;
     }
@@ -590,9 +604,7 @@ export class AssetExplorerPanel extends React.PureComponent<AssetExplorerPanelPr
           selectedProjectFilePath: ''
         };
       },
-      () => {
-        void this.loadProjectEntries();
-      }
+      this.reloadProjectEntries
     );
   };
 
@@ -602,9 +614,7 @@ export class AssetExplorerPanel extends React.PureComponent<AssetExplorerPanelPr
 
   openExternalFolder = (targetPath: string) => {
     if (!isWithinRoot(targetPath, this.state.externalRootPath)) return;
-    this.setState({ externalCurrentPath: targetPath, selectedExternalFilePath: '' }, () => {
-      void this.loadExternalEntries();
-    });
+    this.setState({ externalCurrentPath: targetPath, selectedExternalFilePath: '' }, this.reloadExternalEntries);
   };
 
   selectProjectFile = (path: string) => {
@@ -812,76 +822,27 @@ export class AssetExplorerPanel extends React.PureComponent<AssetExplorerPanelPr
         onDragOver={this.handleDragOver}
         onDragLeave={this.handleDragLeave}
         onDrop={this.handleDrop}
-        style={{
-          position: 'absolute',
-          left: 0,
-          right: 0,
-          bottom: 0,
-          height,
-          minHeight,
-          background: 'linear-gradient(180deg, rgba(32,33,36,0.96) 0%, rgba(24,25,27,0.96) 100%)',
-          backdropFilter: 'blur(2px)',
-          display: 'flex',
-          flexDirection: 'column',
-          zIndex: 2
-        }}
+        style={getAssetExplorerRootStyle(height, minHeight)}
       >
         {isDragActive && (
-          <div
-            style={{
-              position: 'absolute',
-              inset: 6,
-              borderRadius: 10,
-              border: '2px dashed rgba(88, 166, 255, 0.9)',
-              background: 'rgba(88, 166, 255, 0.08)',
-              boxShadow: '0 0 0 2px rgba(0,0,0,0.35) inset',
-              pointerEvents: 'none',
-              zIndex: 3
-            }}
-          />
+          <div style={assetExplorerDropMaskStyle} />
         )}
-        <div
-          style={{
-            padding: '10px 12px',
-            fontSize: 12,
-            color: '#c0c0c0',
-            borderBottom: '1px solid #333',
-            letterSpacing: 0.4
-          }}
-        >
+        <div style={assetExplorerTitleStyle}>
           ASSET EXPLORER
         </div>
 
-        <div style={{ display: 'flex', flex: 1, minHeight: 0 }}>
-          <div
-            style={hasExternalFolders
-              ? { width: projectPaneWidth, minWidth: 0, display: 'flex', flexDirection: 'column' }
-              : { flex: '1 1 0', minWidth: 0, display: 'flex', flexDirection: 'column' }}
-          >
+        <div style={assetExplorerContentStyle}>
+          <div style={getAssetExplorerProjectPaneStyle(hasExternalFolders, projectPaneWidth)}>
             <div
               ref={this.projectHeaderRef}
-              style={{
-                display: 'flex',
-                alignItems: 'center',
-                gap: 10,
-                padding: '10px 12px',
-                borderBottom: '1px solid #333'
-              }}
+              style={assetExplorerHeaderStyle}
             >
-              <div style={{ display: 'flex', alignItems: 'center', gap: 8, minWidth: 0, flex: '0 0 auto' }}>
-                <span style={{ fontSize: 12, color: '#b6b6b6', flex: '0 0 auto' }}>工程资源</span>
+              <div style={assetExplorerHeaderLeftStyle}>
+                <span style={assetExplorerHeaderLabelStyle}>工程资源</span>
                 <select
                   value={selectedProjectFolderKey}
                   onChange={this.onProjectFolderChange}
-                  style={{
-                    background: '#1f2023',
-                    border: '1px solid #3b3d44',
-                    color: '#d0d0d0',
-                    borderRadius: 4,
-                    fontSize: 12,
-                    padding: '4px 6px',
-                    minWidth: 180
-                  }}
+                  style={assetExplorerProjectSelectStyle}
                 >
                   {projectSelectOptions.map((option) => (
                     <option key={option.key} value={option.key}>
@@ -890,7 +851,7 @@ export class AssetExplorerPanel extends React.PureComponent<AssetExplorerPanelPr
                   ))}
                 </select>
               </div>
-              <div style={{ minWidth: 0, flex: '1 1 auto' }}>
+              <div style={assetExplorerBreadcrumbWrapStyle}>
                 <AssetBreadcrumbArea
                   rootPath={projectRootPath}
                   currentPath={projectCurrentPath}
@@ -915,41 +876,18 @@ export class AssetExplorerPanel extends React.PureComponent<AssetExplorerPanelPr
 
           {hasExternalFolders && (
             <>
-              <div
-                onMouseDown={this.beginSplitDrag}
-                style={{
-                  width: 6,
-                  cursor: 'col-resize',
-                  background: 'rgba(255,255,255,0.04)',
-                  borderLeft: '1px solid #333',
-                  borderRight: '1px solid #333'
-                }}
-              />
-              <div style={{ flex: 1, minWidth: 0, display: 'flex', flexDirection: 'column' }}>
+              <div onMouseDown={this.beginSplitDrag} style={assetExplorerSplitStyle} />
+              <div style={assetExplorerExternalPaneStyle}>
                 <div
                   ref={this.externalHeaderRef}
-                  style={{
-                    display: 'flex',
-                    alignItems: 'center',
-                    gap: 10,
-                    padding: '10px 12px',
-                    borderBottom: '1px solid #333'
-                  }}
+                  style={assetExplorerHeaderStyle}
                 >
-                  <div style={{ display: 'flex', alignItems: 'center', gap: 8, minWidth: 0, flex: '0 0 auto' }}>
-                    <span style={{ fontSize: 12, color: '#b6b6b6', flex: '0 0 auto' }}>外部资源</span>
+                  <div style={assetExplorerHeaderLeftStyle}>
+                    <span style={assetExplorerHeaderLabelStyle}>外部资源</span>
                     <select
                       value={selectedExternalFolderKey}
                       onChange={this.onExternalFolderChange}
-                      style={{
-                        background: '#1f2023',
-                        border: '1px solid #3b3d44',
-                        color: '#d0d0d0',
-                        borderRadius: 4,
-                        fontSize: 12,
-                        padding: '4px 6px',
-                        minWidth: 140
-                      }}
+                      style={assetExplorerExternalSelectStyle}
                     >
                       {externalFolders.map((folder) => (
                         <option key={folder.key} value={folder.key}>
@@ -958,7 +896,7 @@ export class AssetExplorerPanel extends React.PureComponent<AssetExplorerPanelPr
                       ))}
                     </select>
                   </div>
-                  <div style={{ minWidth: 0, flex: '1 1 auto' }}>
+                  <div style={assetExplorerBreadcrumbWrapStyle}>
                     <AssetBreadcrumbArea
                       rootPath={externalRootPath}
                       currentPath={externalCurrentPath}
@@ -966,20 +904,11 @@ export class AssetExplorerPanel extends React.PureComponent<AssetExplorerPanelPr
                       onClick={this.openExternalFolder}
                     />
                   </div>
-                  <div style={{ flex: '0 0 auto' }}>
+                  <div style={assetExplorerExternalActionWrapStyle}>
                     <button
                       type="button"
                       onClick={this.removeSelectedExternalFolder}
-                      style={{
-                        background: '#2b2d33',
-                        border: '1px solid #3b3d44',
-                        color: '#c8c8c8',
-                        borderRadius: 4,
-                        fontSize: 12,
-                        padding: '4px 8px',
-                        cursor: 'pointer',
-                        flex: '0 0 auto'
-                      }}
+                      style={assetExplorerRemoveButtonStyle}
                     >
                       移除
                     </button>
@@ -1013,15 +942,7 @@ export class AssetExplorerPanel extends React.PureComponent<AssetExplorerPanelPr
         </div>
 
         {lastError && (
-          <div
-            style={{
-              padding: '8px 12px',
-              borderTop: '1px solid #333',
-              background: 'rgba(0,0,0,0.15)',
-              fontSize: 11,
-              color: '#ff8f8f'
-            }}
-          >
+          <div style={assetExplorerErrorStyle}>
             {lastError}
           </div>
         )}
