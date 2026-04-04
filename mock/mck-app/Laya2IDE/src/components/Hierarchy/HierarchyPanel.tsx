@@ -2,7 +2,21 @@ import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { useSceneStore } from '../../store/sceneStore';
 import { SceneNode } from '../../types/scene';
 import { resolveHitByNode } from '../../core/Renderer.ts';
-import { createImageUIComponent, createLabelUIComponent } from '../../core/componentCreators';
+import { createBoxUIComponent, createImageUIComponent, createLabelUIComponent } from '../../core/componentCreators';
+import type { ComponentCreator } from '../../core/componentCreators';
+import {
+  hierarchyContextMenuStyle,
+  hierarchyMenuButtonDangerDisabledStyle,
+  hierarchyMenuButtonDangerStyle,
+  hierarchyMenuButtonStyle,
+  hierarchyPanelEmptyStyle,
+  hierarchyPanelRootStyle,
+  hierarchyRowInputStyle,
+  hierarchyRowLabelStyle,
+  hierarchyRowSelectedStyle,
+  hierarchyRowStyle,
+  hierarchyRowToggleStyle
+} from './HierarchyPanel.styles';
 
 interface TreeRow {
   path: string;
@@ -112,41 +126,18 @@ export function HierarchyPanel() {
   };
 
   const createImageUIAtRow = (row: TreeRow) => {
-    if (!sceneData) return;
-
-    if (!Array.isArray(row.node.child)) {
-      row.node.child = [];
-    }
-
-    const rootRecord = sceneData as unknown as Record<string, unknown>;
-    const currentMaxId = toNumberOrZero(rootRecord.maxID);
-    const nextCompId = currentMaxId;
-    rootRecord.maxID = currentMaxId + 1;
-
-    const parentCompId = toNumberOrZero(row.node.compId);
-    const nextNode = createImageUIComponent({
-      compId: nextCompId,
-      parentCompId,
-      depth: row.depth + 1
-    });
-    row.node.child.push(nextNode);
-    row.node.hasChild = true;
-    row.node.isDirectory = row.node.hasChild;
-
-    const nextCollapsed = new Set(collapsedPaths);
-    nextCollapsed.delete(row.path);
-    setCollapsedPaths(nextCollapsed);
-
-    const hit = resolveHitByNode(sceneData, nextNode);
-    if (hit) setSelectedHit(hit);
-    else setSelectedHit({ node: nextNode, x: 0, y: 0, w: 0, h: 0, path: row.path });
-
-    setDirty(true);
-    bumpVersion();
-    setContextMenu(null);
+    createUIAtRow(row, createImageUIComponent);
   };
 
   const createLabelUIAtRow = (row: TreeRow) => {
+    createUIAtRow(row, createLabelUIComponent);
+  };
+
+  const createBoxUIAtRow = (row: TreeRow) => {
+    createUIAtRow(row, createBoxUIComponent);
+  };
+
+  const createUIAtRow = (row: TreeRow, creator: ComponentCreator) => {
     if (!sceneData) return;
 
     if (!Array.isArray(row.node.child)) {
@@ -159,7 +150,7 @@ export function HierarchyPanel() {
     rootRecord.maxID = currentMaxId + 1;
 
     const parentCompId = toNumberOrZero(row.node.compId);
-    const nextNode = createLabelUIComponent({
+    const nextNode = creator({
       compId: nextCompId,
       parentCompId,
       depth: row.depth + 1
@@ -242,48 +233,24 @@ export function HierarchyPanel() {
 
   if (!sceneData) {
     return (
-      <div
-        style={{
-          margin: 12,
-          border: '1px solid #3f3f46',
-          borderRadius: 6,
-          height: 'calc(100% - 24px)',
-          background: '#2a2a2a',
-          display: 'flex',
-          alignItems: 'center',
-          justifyContent: 'center',
-          color: '#9aa0a6',
-          fontSize: 12
-        }}
-      >
+      <div style={hierarchyPanelEmptyStyle}>
         Waiting for scene data...
       </div>
     );
   }
 
   return (
-    <div style={{ height: 'calc(100% - 1px)', overflow: 'auto', padding: '6px 0' }}>
+    <div style={hierarchyPanelRootStyle}>
       {rows.map((row) => {
         const isSelected = selectedHit?.node === row.node;
         const isCollapsed = collapsedPaths.has(row.path);
         const label = getNodeLabel(row.node);
+        const rowStyle = isSelected ? { ...hierarchyRowStyle, ...hierarchyRowSelectedStyle } : hierarchyRowStyle;
 
         return (
           <div
             key={row.path}
-            style={{
-              display: 'flex',
-              alignItems: 'center',
-              height: 24,
-              paddingLeft: 8 + row.depth * 14,
-              paddingRight: 8,
-              background: isSelected ? '#37373d' : 'transparent',
-              color: isSelected ? '#ffffff' : '#d4d4d4',
-              borderTop: isSelected ? '1px solid #4b4b4b' : '1px solid transparent',
-              borderBottom: isSelected ? '1px solid #4b4b4b' : '1px solid transparent',
-              cursor: 'pointer',
-              userSelect: 'none'
-            }}
+            style={{ ...rowStyle, paddingLeft: 8 + row.depth * 14 }}
             onClick={() => handleSelectNode(row.node)}
             onContextMenu={(e) => {
               e.preventDefault();
@@ -294,13 +261,7 @@ export function HierarchyPanel() {
             title={`${label} (${row.node.type})`}
           >
             <div
-              style={{
-                width: 14,
-                fontSize: 10,
-                color: '#a9a9a9',
-                textAlign: 'center',
-                flexShrink: 0
-              }}
+              style={hierarchyRowToggleStyle}
               onClick={(e) => {
                 e.stopPropagation();
                 if (row.hasChildren) toggleCollapse(row.path);
@@ -308,7 +269,7 @@ export function HierarchyPanel() {
             >
               {row.hasChildren ? (isCollapsed ? '▶' : '▼') : ''}
             </div>
-            <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', fontSize: 12 }}>
+            <span style={hierarchyRowLabelStyle}>
               {editingPath === row.path ? (
                 <input
                   ref={editingInputRef}
@@ -327,17 +288,7 @@ export function HierarchyPanel() {
                     }
                   }}
                   onClick={(e) => e.stopPropagation()}
-                  style={{
-                    width: '100%',
-                    height: 20,
-                    background: '#1f1f1f',
-                    border: '1px solid #4b4b4b',
-                    color: '#ffffff',
-                    borderRadius: 4,
-                    padding: '0 6px',
-                    fontSize: 12,
-                    outline: 'none'
-                  }}
+                  style={hierarchyRowInputStyle}
                 />
               ) : (
                 label
@@ -349,18 +300,7 @@ export function HierarchyPanel() {
 
       {contextMenu && (
         <div
-          style={{
-            position: 'fixed',
-            left: contextMenu.x,
-            top: contextMenu.y,
-            minWidth: 140,
-            background: '#2a2a2a',
-            border: '1px solid #3f3f46',
-            borderRadius: 6,
-            boxShadow: '0 8px 18px rgba(0, 0, 0, 0.45)',
-            zIndex: 9999,
-            padding: 4
-          }}
+          style={{ ...hierarchyContextMenuStyle, left: contextMenu.x, top: contextMenu.y }}
           onPointerDown={(e) => e.stopPropagation()}
           onContextMenu={(e) => {
             e.preventDefault();
@@ -373,17 +313,7 @@ export function HierarchyPanel() {
               e.stopPropagation();
               createImageUIAtRow(contextMenu.row);
             }}
-            style={{
-              width: '100%',
-              border: 'none',
-              borderRadius: 4,
-              background: 'transparent',
-              color: '#d4d4d4',
-              textAlign: 'left',
-              fontSize: 12,
-              padding: '6px 8px',
-              cursor: 'pointer'
-            }}
+            style={hierarchyMenuButtonStyle}
           >
             创建 ImageUI
           </button>
@@ -393,19 +323,19 @@ export function HierarchyPanel() {
               e.stopPropagation();
               createLabelUIAtRow(contextMenu.row);
             }}
-            style={{
-              width: '100%',
-              border: 'none',
-              borderRadius: 4,
-              background: 'transparent',
-              color: '#d4d4d4',
-              textAlign: 'left',
-              fontSize: 12,
-              padding: '6px 8px',
-              cursor: 'pointer'
-            }}
+            style={hierarchyMenuButtonStyle}
           >
             创建 Label
+          </button>
+          <button
+            type="button"
+            onClick={(e) => {
+              e.stopPropagation();
+              createBoxUIAtRow(contextMenu.row);
+            }}
+            style={hierarchyMenuButtonStyle}
+          >
+            创建 Box
           </button>
           <button
             type="button"
@@ -414,17 +344,11 @@ export function HierarchyPanel() {
               deleteNodeAtRow(contextMenu.row);
             }}
             disabled={contextMenu.row.path === '0'}
-            style={{
-              width: '100%',
-              border: 'none',
-              borderRadius: 4,
-              background: 'transparent',
-              color: contextMenu.row.path === '0' ? '#777' : '#ffb4b4',
-              textAlign: 'left',
-              fontSize: 12,
-              padding: '6px 8px',
-              cursor: contextMenu.row.path === '0' ? 'not-allowed' : 'pointer'
-            }}
+            style={
+              contextMenu.row.path === '0'
+                ? { ...hierarchyMenuButtonStyle, ...hierarchyMenuButtonDangerDisabledStyle }
+                : { ...hierarchyMenuButtonStyle, ...hierarchyMenuButtonDangerStyle }
+            }
           >
             删除节点
           </button>
