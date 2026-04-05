@@ -65,6 +65,12 @@ interface ColorFieldRowProps {
   onCommit: (nextValue: string) => void;
 }
 
+interface AutoFieldRowProps {
+  label: string;
+  value: number | null | undefined;
+  onCommit: (nextValue: number | null) => void;
+}
+
 function FieldRow({ label, value, onCommit }: FieldRowProps) {
   return (
     <label style={inspectorFieldRowStyle}>
@@ -73,6 +79,39 @@ function FieldRow({ label, value, onCommit }: FieldRowProps) {
         type="number"
         value={value}
         onChange={(e) => onCommit(toNumberOrZero(e.target.value))}
+        style={inspectorInputStyle}
+      />
+    </label>
+  );
+}
+
+function AutoFieldRow({ label, value, onCommit }: AutoFieldRowProps) {
+  // null/undefined 表示 "Auto"，0 是有效的数值
+  const isAuto = value === null || value === undefined;
+  const displayValue = isAuto ? '' : String(value);
+
+  const handleChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const input = e.target.value.trim();
+    if (input === '') {
+      // 清空时设为 null，表示 Auto
+      onCommit(null);
+    } else {
+      const num = Number(input);
+      if (Number.isFinite(num)) {
+        // 包括 0 在内的有效数字都直接提交
+        onCommit(num);
+      }
+    }
+  };
+
+  return (
+    <label style={inspectorFieldRowStyle}>
+      <span style={inspectorFieldLabelStyle}>{label}</span>
+      <input
+        type="text"
+        value={displayValue}
+        placeholder="Auto"
+        onChange={handleChange}
         style={inspectorInputStyle}
       />
     </label>
@@ -153,6 +192,10 @@ export function InspectorPanel() {
     updateSelectedNodeProps({ [key]: nextValue });
   };
 
+  const updateAutoNumericProp = (key: 'width' | 'height', nextValue: number | null) => {
+    updateSelectedNodeProps({ [key]: nextValue });
+  };
+
   const updateTextProp = (key: 'text' | 'color' | 'skin' | 'texture' | 'name' | 'var', nextValue: string) => {
     updateSelectedNodeProps({ [key]: nextValue });
   };
@@ -185,8 +228,16 @@ export function InspectorPanel() {
             <div style={inspectorCardTitleStyle}>TRANSFORM (MINIMAL)</div>
             <FieldRow label="x" value={Number(selectedProps.x || 0)} onCommit={(v) => updateNumericProp('x', v)} />
             <FieldRow label="y" value={Number(selectedProps.y || 0)} onCommit={(v) => updateNumericProp('y', v)} />
-            <FieldRow label="width" value={Number(selectedProps.width || 0)} onCommit={(v) => updateNumericProp('width', v)} />
-            <FieldRow label="height" value={Number(selectedProps.height || 0)} onCommit={(v) => updateNumericProp('height', v)} />
+            <AutoFieldRow
+              label="width"
+              value={selectedProps.width != null ? Number(selectedProps.width) : null}
+              onCommit={(v) => updateAutoNumericProp('width', v)}
+            />
+            <AutoFieldRow
+              label="height"
+              value={selectedProps.height != null ? Number(selectedProps.height) : null}
+              onCommit={(v) => updateAutoNumericProp('height', v)}
+            />
           </div>
 
           {selectedNode.type === 'Label' && (
