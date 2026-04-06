@@ -232,6 +232,12 @@ export function App() {
     doc.write(getPsdPickerHtml());
     doc.close();
 
+    // 默认开启永远在前
+    const hostApi: { toggleTop?: (top: boolean) => Promise<boolean> } | undefined = (window as any).hostApi;
+    if (hostApi?.toggleTop) {
+      hostApi.toggleTop(true);
+    }
+
     // 监听新窗口关闭
     const checkClosed = setInterval(() => {
       if (newWin.closed) {

@@ -79,7 +79,7 @@ body { background:#1e1e1e; color:#d4d4d4; font-family:Consolas,'Courier New',mon
 <div class="header">
   <span class="header-title">PSD 图层选择器</span>
   <label style="margin-right: 12px; font-size: 11px; display: flex; align-items: center; gap: 4px; cursor: pointer; color: #bbb;">
-    <input type="checkbox" id="alwaysOnTopCb" /> 永远在前
+    <input type="checkbox" id="alwaysOnTopCb" checked /> 永远在前
   </label>
   <button class="header-close" id="closeBtn">&times;</button>
 </div>
