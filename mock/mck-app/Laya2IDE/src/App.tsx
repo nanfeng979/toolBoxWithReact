@@ -255,7 +255,7 @@ export function App() {
       const data = event.data;
       if (!data || data.source !== 'psd-picker') return;
 
-      const hostApi: { openFileDialog?: () => Promise<string[]>; parsePsd?: (p: string) => Promise<unknown>; toggleTop?: (top: boolean) => Promise<boolean> } | undefined = (window as unknown as Record<string, unknown>).hostApi as typeof hostApi;
+      const hostApi: { openFileDialog?: (defaultPath?: string) => Promise<string[]>; parsePsd?: (p: string) => Promise<unknown>; toggleTop?: (top: boolean) => Promise<boolean> } | undefined = (window as unknown as Record<string, unknown>).hostApi as typeof hostApi;
 
       if (data.type === 'open-file') {
         // 子窗口请求打开文件
@@ -266,7 +266,9 @@ export function App() {
             }, '*');
             return;
           }
-          const paths: string[] = await hostApi.openFileDialog();
+
+          const lastPsdPath = localStorage.getItem('lastPsdPath') || undefined;
+          const paths: string[] = await hostApi.openFileDialog(lastPsdPath);
           if (!paths || paths.length === 0) {
             psdPickerWindowRef.current?.postMessage({
               source: 'laya2ide', type: 'open-file-cancel'
@@ -275,6 +277,13 @@ export function App() {
           }
 
           const selectedPath = paths[0];
+          
+          // 记忆最后选择的路径（存其上一级目录）
+          const folderPath = selectedPath.substring(0, Math.max(selectedPath.lastIndexOf('/'), selectedPath.lastIndexOf('\\')));
+          if (folderPath) {
+            localStorage.setItem('lastPsdPath', folderPath);
+          }
+
           psdPickerWindowRef.current?.postMessage({
             source: 'laya2ide', type: 'open-file-loading', filePath: selectedPath
           }, '*');

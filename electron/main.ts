@@ -613,9 +613,10 @@ app.whenReady().then(() => {
     }
   });
 
-  ipcMain.handle('host:open-file-dialog', async () => {
+  ipcMain.handle('host:open-file-dialog', async (_event, defaultPath?: string) => {
     if (!win) return null;
     const { canceled, filePaths } = await dialog.showOpenDialog(win, {
+      defaultPath: defaultPath,
       properties: ['openFile', 'multiSelections']
     });
     if (canceled) return null;

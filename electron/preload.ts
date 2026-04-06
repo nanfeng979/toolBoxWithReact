@@ -5,7 +5,7 @@ import { ipcRenderer, contextBridge } from 'electron'
 if (window.location.protocol === 'miniapp:') {
   contextBridge.exposeInMainWorld('hostApi', {
     showNotification: (title: string, body: string) => ipcRenderer.invoke('host:show-notification', title, body),
-    openFileDialog: () => ipcRenderer.invoke('host:open-file-dialog'),
+    openFileDialog: (defaultPath?: string) => ipcRenderer.invoke('host:open-file-dialog', defaultPath),
     openDirectoryDialog: () => ipcRenderer.invoke('host:open-directory'),
     readDirectoryFiles: (dirPath: string) => ipcRenderer.invoke('host:read-dir', dirPath),
     watchDirectory: (watchId: string, dirPath: string) => ipcRenderer.invoke('host:watch-dir', watchId, dirPath),
