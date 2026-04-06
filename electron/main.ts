@@ -714,5 +714,15 @@ app.whenReady().then(() => {
     }
   });
 
+  // ========== Window Management ==========
+  ipcMain.handle('host:toggle-top', async (_event, alwaysOnTop: boolean) => {
+    const targetWin = BrowserWindow.getAllWindows().find(w => w !== win);
+    if (targetWin) {
+      targetWin.setAlwaysOnTop(alwaysOnTop);
+      return true;
+    }
+    return false;
+  });
+
   createWindow();
 })

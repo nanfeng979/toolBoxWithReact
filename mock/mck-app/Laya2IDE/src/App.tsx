@@ -249,7 +249,7 @@ export function App() {
       const data = event.data;
       if (!data || data.source !== 'psd-picker') return;
 
-      const hostApi: { openFileDialog?: () => Promise<string[]>; parsePsd?: (p: string) => Promise<unknown> } | undefined = (window as unknown as Record<string, unknown>).hostApi as typeof hostApi;
+      const hostApi: { openFileDialog?: () => Promise<string[]>; parsePsd?: (p: string) => Promise<unknown>; toggleTop?: (top: boolean) => Promise<boolean> } | undefined = (window as unknown as Record<string, unknown>).hostApi as typeof hostApi;
 
       if (data.type === 'open-file') {
         // 子窗口请求打开文件
@@ -282,6 +282,12 @@ export function App() {
           psdPickerWindowRef.current?.postMessage({
             source: 'laya2ide', type: 'open-file-error', error: msg
           }, '*');
+        }
+      }
+
+      if (data.type === 'toggle-top') {
+        if (hostApi?.toggleTop) {
+          hostApi.toggleTop(!!data.value);
         }
       }
 

@@ -78,6 +78,9 @@ body { background:#1e1e1e; color:#d4d4d4; font-family:Consolas,'Courier New',mon
 
 <div class="header">
   <span class="header-title">PSD 图层选择器</span>
+  <label style="margin-right: 12px; font-size: 11px; display: flex; align-items: center; gap: 4px; cursor: pointer; color: #bbb;">
+    <input type="checkbox" id="alwaysOnTopCb" /> 永远在前
+  </label>
   <button class="header-close" id="closeBtn">&times;</button>
 </div>
 
@@ -109,6 +112,7 @@ body { background:#1e1e1e; color:#d4d4d4; font-family:Consolas,'Courier New',mon
   var closeBtn  = document.getElementById('closeBtn');
   var fileInfo  = document.getElementById('fileInfo');
   var selectedNodeName = document.getElementById('selectedNodeName');
+  var alwaysOnTopCb = document.getElementById('alwaysOnTopCb');
 
   var psdData = null;
   var selectedLayer = null;
@@ -117,6 +121,13 @@ body { background:#1e1e1e; color:#d4d4d4; font-family:Consolas,'Courier New',mon
 
   function post(data) {
     window.opener && window.opener.postMessage(Object.assign({ source: 'psd-picker' }, data), '*');
+  }
+
+  // ---- always on top ----
+  if (alwaysOnTopCb) {
+    alwaysOnTopCb.addEventListener('change', function(e) {
+      post({ type: 'toggle-top', value: e.target.checked });
+    });
   }
 
   // ---- close ----
