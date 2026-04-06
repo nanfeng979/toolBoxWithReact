@@ -294,10 +294,41 @@ export function App() {
       if (data.type === 'apply-coords') {
         // 子窗口请求应用坐标到选中节点（只应用坐标，不应用尺寸）
         const node = selectedHit?.node;
-        if (node) {
+        if (node && sceneData) {
+          // 计算父节点的累计偏移
+          const path = selectedHit.path;
+          const pathParts = path.split('.').map(Number);
+          let parentAbsX = 0;
+          let parentAbsY = 0;
+
+          // 遍历所有祖先节点，累计父节点坐标
+          if (pathParts.length > 1) {
+            let currentNode: SceneNode = sceneData;
+            // 从根节点遍历到父节点（不包含当前节点）
+            for (let i = 0; i < pathParts.length - 1; i++) {
+              const idx = pathParts[i];
+              if (i === 0) {
+                // 根节点，idx 应该是 0
+                currentNode = sceneData;
+              } else {
+                // 子节点
+                if (!currentNode.child || !currentNode.child[idx]) break;
+                currentNode = currentNode.child[idx];
+              }
+              // 累加当前祖先节点的相对坐标
+              const props = currentNode.props || {};
+              parentAbsX += props.x || 0;
+              parentAbsY += props.y || 0;
+            }
+          }
+
+          // PSD坐标是绝对坐标，需要转换为相对坐标
+          const relativeX = data.left - parentAbsX;
+          const relativeY = data.top - parentAbsY;
+
           updateSelectedNodeProps({
-            x: data.left,
-            y: data.top
+            x: relativeX,
+            y: relativeY
           });
           // 通知子窗口应用成功
           psdPickerWindowRef.current?.postMessage({
@@ -309,7 +340,7 @@ export function App() {
 
     window.addEventListener('message', handleMessage);
     return () => window.removeEventListener('message', handleMessage);
-  }, [selectedHit, updateSelectedNodeProps]);
+  }, [selectedHit, updateSelectedNodeProps, sceneData]);
 
   // 向PSD选择器窗口同步选中节点信息
   useEffect(() => {
