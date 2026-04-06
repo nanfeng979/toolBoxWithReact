@@ -1,5 +1,6 @@
 import React, { useEffect, useRef } from 'react';
 import { SceneCanvas } from './components/Viewport/SceneCanvas';
+import { PsdLayerBoundsOverlay } from './components/Viewport/PsdLayerBoundsOverlay';
 import { HierarchyPanel } from './components/Hierarchy/HierarchyPanel';
 import { InspectorPanel } from './components/Inspector/InspectorPanel';
 import { AssetExplorerPanel } from './components/AssetExplorer/AssetExplorerPanel';
@@ -7,6 +8,16 @@ import { formatSceneForSave } from './utils/sceneFormatter';
 import { preloadImages } from './utils/sceneUtils';
 import { useSceneStore } from './store/sceneStore';
 import { SceneNode } from './types/scene';
+import { getPsdPickerHtml } from './components/AssetExplorer/psdPickerHtml';
+
+// PSD图层边界信息
+interface PsdLayerBounds {
+  name: string;
+  left: number;
+  top: number;
+  width: number;
+  height: number;
+}
 
 const LAYOUT_STORAGE_KEY = 'laya2ide.layout.v1';
 const LEFT_MIN_WIDTH = 180;
@@ -70,6 +81,10 @@ export function App() {
   const [rightPaneWidth, setRightPaneWidth] = React.useState(layoutPrefRef.current?.rightWidth ?? 280);
   const [bottomPaneHeight, setBottomPaneHeight] = React.useState(layoutPrefRef.current?.bottomHeight ?? 300);
   const [sceneFilePath, setSceneFilePath] = React.useState('');
+  
+  // PSD图层选择器 - 独立窗口
+  const psdPickerWindowRef = useRef<Window | null>(null);
+  const [psdLayerBounds, setPsdLayerBounds] = React.useState<PsdLayerBounds | null>(null);
 
   const getTabId = () => {
     const urlParams = new URLSearchParams(window.location.search);
@@ -207,6 +222,97 @@ export function App() {
   useEffect(() => {
     window.parent.postMessage({ type: 'set-dirty', dirty: isDirty, tabId: getTabId() }, '*');
   }, [isDirty]);
+
+  // 打开PSD图层选择器（独立窗口）
+  const handleOpenPsdPicker = () => {
+    // 如果窗口已存在且未关闭，聚焦它
+    if (psdPickerWindowRef.current && !psdPickerWindowRef.current.closed) {
+      psdPickerWindowRef.current.focus();
+      return;
+    }
+
+    const features = 'width=380,height=640,menubar=no,toolbar=no,location=no,status=no';
+    const newWin = window.open('', '_blank', features);
+    if (!newWin) return;
+
+    psdPickerWindowRef.current = newWin;
+    const doc = newWin.document;
+    doc.open();
+    doc.write(getPsdPickerHtml());
+    doc.close();
+
+    // 监听新窗口关闭
+    const checkClosed = setInterval(() => {
+      if (newWin.closed) {
+        clearInterval(checkClosed);
+        if (psdPickerWindowRef.current === newWin) {
+          psdPickerWindowRef.current = null;
+          setPsdLayerBounds(null);
+        }
+      }
+    }, 1000);
+  };
+
+  // 监听来自PSD选择器窗口的消息
+  useEffect(() => {
+    const handleMessage = async (event: MessageEvent) => {
+      const data = event.data;
+      if (!data || data.source !== 'psd-picker') return;
+
+      const hostApi: { openFileDialog?: () => Promise<string[]>; parsePsd?: (p: string) => Promise<unknown> } | undefined = (window as unknown as Record<string, unknown>).hostApi as typeof hostApi;
+
+      if (data.type === 'open-file') {
+        // 子窗口请求打开文件
+        try {
+          if (!hostApi?.openFileDialog) {
+            psdPickerWindowRef.current?.postMessage({
+              source: 'laya2ide', type: 'open-file-error', error: 'Host API not available'
+            }, '*');
+            return;
+          }
+          const paths: string[] = await hostApi.openFileDialog();
+          if (!paths || paths.length === 0) {
+            psdPickerWindowRef.current?.postMessage({
+              source: 'laya2ide', type: 'open-file-cancel'
+            }, '*');
+            return;
+          }
+
+          const selectedPath = paths[0];
+          psdPickerWindowRef.current?.postMessage({
+            source: 'laya2ide', type: 'open-file-loading', filePath: selectedPath
+          }, '*');
+
+          const result = await hostApi.parsePsd!(selectedPath);
+          psdPickerWindowRef.current?.postMessage({
+            source: 'laya2ide', type: 'open-file-result', result
+          }, '*');
+        } catch (err: unknown) {
+          const msg = err instanceof Error ? err.message : 'Unknown error';
+          psdPickerWindowRef.current?.postMessage({
+            source: 'laya2ide', type: 'open-file-error', error: msg
+          }, '*');
+        }
+      }
+
+      if (data.type === 'select-layer') {
+        setPsdLayerBounds({
+          name: data.layer.name,
+          left: data.layer.left,
+          top: data.layer.top,
+          width: data.layer.width,
+          height: data.layer.height
+        });
+      }
+
+      if (data.type === 'clear-selection') {
+        setPsdLayerBounds(null);
+      }
+    };
+
+    window.addEventListener('message', handleMessage);
+    return () => window.removeEventListener('message', handleMessage);
+  }, []);
 
   useEffect(() => {
     const isEditableTarget = (target: EventTarget | null) => {
@@ -404,7 +510,11 @@ export function App() {
         minHeight={BOTTOM_MIN_HEIGHT}
         sceneFilePath={sceneFilePath}
         sceneData={sceneData as SceneNode | null}
+        onOpenPsdPicker={handleOpenPsdPicker}
       />
+
+      {/* PSD图层边界覆盖层 */}
+      <PsdLayerBoundsOverlay bounds={psdLayerBounds} />
     </div>
   );
 }

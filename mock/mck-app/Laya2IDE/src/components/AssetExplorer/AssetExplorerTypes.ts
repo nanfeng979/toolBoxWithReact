@@ -5,6 +5,7 @@ export interface AssetExplorerPanelProps {
   minHeight: number;
   sceneFilePath: string;
   sceneData: SceneNode | null;
+  onOpenPsdPicker?: () => void;
 }
 
 export interface HostApiEntryItem {

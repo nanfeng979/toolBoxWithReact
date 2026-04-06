@@ -938,6 +938,7 @@ export class AssetExplorerPanel extends React.PureComponent<AssetExplorerPanelPr
             onApplyBatchReplace={this.applyBatchReplace}
             canApplyBatchReplace={batchReplaceEnabled}
             batchReplaceLabel={batchReplaceLabel}
+            onOpenPsdPicker={this.props.onOpenPsdPicker}
           />
         </div>
 

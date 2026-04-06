@@ -25,6 +25,7 @@ interface AssetFunctionPanelProps {
   newPageUrl?: string;
   initialData?: unknown;
   onMessageFromNewPage?: (data: unknown) => void;
+  onOpenPsdPicker?: () => void;
 }
 
 export const AssetFunctionPanel = React.forwardRef<AssetFunctionPanelRef, AssetFunctionPanelProps>((props, ref) => {
@@ -37,7 +38,8 @@ export const AssetFunctionPanel = React.forwardRef<AssetFunctionPanelRef, AssetF
     batchReplaceLabel,
     newPageUrl,
     initialData,
-    onMessageFromNewPage
+    onMessageFromNewPage,
+    onOpenPsdPicker
   } = props;
 
   const newWindowRef = useRef<Window | null>(null);
@@ -152,6 +154,15 @@ export const AssetFunctionPanel = React.forwardRef<AssetFunctionPanelRef, AssetF
         >
           打开独立页面
         </button>
+        {onOpenPsdPicker && (
+          <button
+            type="button"
+            onClick={onOpenPsdPicker}
+            style={assetFunctionPanelButtonStyle}
+          >
+            PSD图层选择器
+          </button>
+        )}
       </div>
     </div>
   );
