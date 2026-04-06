@@ -20,7 +20,7 @@ if (window.location.protocol === 'miniapp:') {
     getThemeColor: () => ipcRenderer.invoke('host:get-theme-color'),
     getPrivateState: (appId: string, key: string) => ipcRenderer.invoke('host:private-state:get', appId, key),
     setPrivateState: (appId: string, key: string, value: any) => ipcRenderer.invoke('host:private-state:set', appId, key, value),
-    parsePsd: (filePath: string) => ipcRenderer.invoke('host:parse-psd', filePath),
+    parsePsd: (filePath: string, options?: { thumbnails?: boolean }) => ipcRenderer.invoke('host:parse-psd', filePath, options),
     toggleTop: (alwaysOnTop: boolean) => ipcRenderer.invoke('host:toggle-top', alwaysOnTop),
   });
 } else {

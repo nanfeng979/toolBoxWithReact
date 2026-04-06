@@ -255,7 +255,7 @@ export function App() {
       const data = event.data;
       if (!data || data.source !== 'psd-picker') return;
 
-      const hostApi: { openFileDialog?: (defaultPath?: string) => Promise<string[]>; parsePsd?: (p: string) => Promise<unknown>; toggleTop?: (top: boolean) => Promise<boolean> } | undefined = (window as unknown as Record<string, unknown>).hostApi as typeof hostApi;
+      const hostApi: { openFileDialog?: (defaultPath?: string) => Promise<string[]>; parsePsd?: (p: string, opts?: { thumbnails?: boolean }) => Promise<unknown>; toggleTop?: (top: boolean) => Promise<boolean> } | undefined = (window as unknown as Record<string, unknown>).hostApi as typeof hostApi;
 
       if (data.type === 'open-file') {
         // 子窗口请求打开文件
@@ -288,7 +288,7 @@ export function App() {
             source: 'laya2ide', type: 'open-file-loading', filePath: selectedPath
           }, '*');
 
-          const result = await hostApi.parsePsd!(selectedPath);
+          const result = await hostApi.parsePsd!(selectedPath, { thumbnails: true });
           psdPickerWindowRef.current?.postMessage({
             source: 'laya2ide', type: 'open-file-result', result
           }, '*');

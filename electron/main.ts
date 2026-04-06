@@ -669,14 +669,14 @@ app.whenReady().then(() => {
   });
 
   // ========== PSD Parser Handler ==========
-  ipcMain.handle('host:parse-psd', async (_event, filePath: string) => {
+  ipcMain.handle('host:parse-psd', async (_event, filePath: string, options?: { thumbnails?: boolean }) => {
     try {
       const scriptPath = path.join(process.env.APP_ROOT!, 'scripts', 'parse_psd.py');
-      
+
       // 尝试找到 Python 可执行文件
       const pythonCommands = ['python3', 'python'];
       let pythonPath = '';
-      
+
       for (const cmd of pythonCommands) {
         try {
           await execFileAsync(cmd, ['--version']);
@@ -686,31 +686,37 @@ app.whenReady().then(() => {
           // 继续尝试下一个
         }
       }
-      
+
       if (!pythonPath) {
         return { success: false, error: 'Python not found. Please install Python 3.' };
       }
-      
+
+      // 构建命令行参数
+      const args = [scriptPath, filePath];
+      if (options?.thumbnails) {
+        args.push('--thumbnails');
+      }
+
       // 设置环境变量强制UTF-8编码
       const env = { ...process.env, PYTHONIOENCODING: 'utf-8' };
-      
-      const { stdout, stderr } = await execFileAsync(pythonPath, [scriptPath, filePath], {
-        maxBuffer: 50 * 1024 * 1024, // 50MB buffer for large PSD files
+
+      const { stdout, stderr } = await execFileAsync(pythonPath, args, {
+        maxBuffer: 100 * 1024 * 1024, // 100MB buffer for large PSD files with thumbnails
         encoding: 'utf-8',
         env
       });
-      
+
       if (stderr && !stdout) {
         return { success: false, error: stderr };
       }
-      
+
       const result = JSON.parse(stdout);
       return result;
     } catch (err: unknown) {
       console.error('Failed to parse PSD:', err);
-      return { 
-        success: false, 
-        error: err instanceof Error ? err.message : 'Unknown error during PSD parsing' 
+      return {
+        success: false,
+        error: err instanceof Error ? err.message : 'Unknown error during PSD parsing'
       };
     }
   });

@@ -55,6 +55,7 @@ body { background:#1e1e1e; color:#d4d4d4; font-family:Consolas,'Courier New',mon
 .layer-row:hover { background:#2a2d2e; }
 .layer-row.selected { background:#094771; }
 .layer-toggle { width:14px; flex-shrink:0; text-align:center; font-size:9px; color:#8e8e8e; }
+.layer-thumb { width:20px; height:20px; flex-shrink:0; margin-right:4px; object-fit:contain; background:#2a2a2a; border-radius:2px; }
 .layer-icon { width:14px; flex-shrink:0; text-align:center; font-size:10px; margin-right:4px; }
 .layer-name { flex:1; overflow:hidden; text-overflow:ellipsis; }
 .layer-size { font-size:9px; color:#6e6e6e; margin-left:6px; }
@@ -231,9 +232,17 @@ body { background:#1e1e1e; color:#d4d4d4; font-family:Consolas,'Courier New',mon
     row.style.paddingLeft = (6 + depth * 12) + 'px';
     row.dataset.path = path;
 
+    // 构建图标/缩略图部分
+    var iconHtml = '';
+    if (layer.thumbnail) {
+      iconHtml = '<img class="layer-thumb" src="data:image/png;base64,' + layer.thumbnail + '" alt="" />';
+    } else {
+      iconHtml = '<span class="layer-icon">' + (iconMap[layer.type] || '📄') + '</span>';
+    }
+
     var html =
       '<span class="layer-toggle">' + (hasChildren ? (collapsed ? '▶' : '▼') : '') + '</span>' +
-      '<span class="layer-icon">' + (iconMap[layer.type] || '📄') + '</span>' +
+      iconHtml +
       '<span class="layer-name">' + escHtml(layer.name) + '</span>';
 
     // 选中时显示"应用"按钮，否则显示尺寸
@@ -296,7 +305,12 @@ body { background:#1e1e1e; color:#d4d4d4; font-family:Consolas,'Courier New',mon
 
   function showDetails(layer) {
     details.style.display = '';
+    var thumbHtml = '';
+    if (layer.thumbnail) {
+      thumbHtml = '<div style="text-align:center;margin-bottom:8px;"><img src="data:image/png;base64,' + layer.thumbnail + '" style="max-width:100%;max-height:80px;border-radius:3px;background:#2a2a2a;" /></div>';
+    }
     detailsContent.innerHTML =
+      thumbHtml +
       '<div class="detail-row"><span class="detail-label">名称:</span><span class="detail-value">' + escHtml(layer.name) + '</span></div>' +
       '<div class="detail-row"><span class="detail-label">类型:</span><span class="detail-value">' + escHtml(layer.type) + '</span></div>' +
       '<div class="detail-row"><span class="detail-label">坐标:</span><span class="detail-value">x: ' + layer.left + ', y: ' + layer.top + '</span></div>' +

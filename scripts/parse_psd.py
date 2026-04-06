@@ -21,6 +21,7 @@ PSD Parser - 解析PSD文件并返回图层层级结构
       "bottom": 100,
       "width": 100,
       "height": 100,
+      "thumbnail": "base64...",  // 可选，仅当 --thumbnails 参数时返回
       "children": [...]  // 仅group类型有
     }
   ]
@@ -29,10 +30,17 @@ PSD Parser - 解析PSD文件并返回图层层级结构
 
 import sys
 import json
+import base64
 from pathlib import Path
+from io import BytesIO
 
 # 强制使用UTF-8编码输出（Windows下必须）
 sys.stdout.reconfigure(encoding='utf-8') if hasattr(sys.stdout, 'reconfigure') else None
+
+# 命令行参数：是否包含缩略图
+INCLUDE_THUMBNAILS = '--thumbnails' in sys.argv or '-t' in sys.argv
+DEBUG_THUMBNAILS = '--debug-thumbnails' in sys.argv
+THUMBNAIL_MAX_SIZE = 32  # 缩略图最大尺寸
 
 try:
     from psd_tools import PSDImage
@@ -58,6 +66,52 @@ def get_layer_type(layer):
         return "text"
     else:
         return "pixel"
+
+
+def generate_thumbnail(layer, max_size=THUMBNAIL_MAX_SIZE):
+    """生成图层缩略图的 base64 编码"""
+    try:
+        # 检查图层是否有实际像素内容
+        if not hasattr(layer, 'has_pixels') or not layer.has_pixels():
+            if DEBUG_THUMBNAILS:
+                print(f"[DEBUG] '{layer.name}': no pixels", file=sys.stderr)
+            return None
+        
+        # 使用 composite() 渲染图层内容为 PIL Image
+        thumb = layer.composite()
+        if thumb is None:
+            if DEBUG_THUMBNAILS:
+                print(f"[DEBUG] '{layer.name}': composite() returned None", file=sys.stderr)
+            return None
+        
+        if DEBUG_THUMBNAILS:
+            print(f"[DEBUG] '{layer.name}': composite() OK, size={thumb.size}", file=sys.stderr)
+        
+        # 调整大小
+        w, h = thumb.size
+        if w <= 0 or h <= 0:
+            return None
+        if w > max_size or h > max_size:
+            ratio = min(max_size / w, max_size / h)
+            new_w = max(1, int(w * ratio))
+            new_h = max(1, int(h * ratio))
+            # 使用 LANCZOS 重采样
+            try:
+                from PIL import Image
+                thumb = thumb.resize((new_w, new_h), Image.Resampling.LANCZOS)
+            except (ImportError, AttributeError):
+                # 旧版本 Pillow
+                thumb = thumb.resize((new_w, new_h), 1)
+        
+        # 转为 base64
+        buffer = BytesIO()
+        thumb.save(buffer, format='PNG')
+        return base64.b64encode(buffer.getvalue()).decode('utf-8')
+    
+    except Exception as e:
+        if DEBUG_THUMBNAILS:
+            print(f"[DEBUG] generate_thumbnail error for '{layer.name}': {e}", file=sys.stderr)
+        return None
 
 
 def parse_layer(layer):
@@ -90,6 +144,12 @@ def parse_layer(layer):
         result["bottom"] = 0
         result["width"] = 0
         result["height"] = 0
+    
+    # 生成缩略图（仅非组图层，且开启缩略图选项时）
+    if INCLUDE_THUMBNAILS and layer_type != "group":
+        thumb_base64 = generate_thumbnail(layer)
+        if thumb_base64:
+            result["thumbnail"] = thumb_base64
     
     # 如果是组图层，递归解析子图层
     if layer_type == "group":
