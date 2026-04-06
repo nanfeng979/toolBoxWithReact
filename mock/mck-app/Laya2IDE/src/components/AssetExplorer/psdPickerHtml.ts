@@ -2,27 +2,16 @@
  * 生成PSD图层选择器独立窗口的HTML内容。
  * 该窗口通过 window.opener.postMessage 与父窗口(Laya2IDE)通信：
  *   → open-file          : 请求打开PSD文件对话框
- *   → select-layer       : 选中某个图层，发送 { name, left, top, width, height }
- *   → clear-selection    : 清除选中
+ *   → apply-coords       : 应用图层坐标到父窗口选中的节点
  *
  * 父窗口回复：
  *   ← open-file-loading  : 开始解析
  *   ← open-file-result   : 解析完成，附带完整 PSD 数据
  *   ← open-file-error    : 解析失败
  *   ← open-file-cancel   : 用户取消选择文件
+ *   ← selected-node-update : 父窗口选中节点变化
+ *   ← apply-coords-success : 坐标应用成功
  */
-
-interface PsdLayer {
-  name: string;
-  type: string;
-  visible: boolean;
-  opacity: number;
-  left: number;
-  top: number;
-  width: number;
-  height: number;
-  children?: PsdLayer[];
-}
 
 export function getPsdPickerHtml(): string {
   return `<!DOCTYPE html>
@@ -50,6 +39,12 @@ body { background:#1e1e1e; color:#d4d4d4; font-family:Consolas,'Courier New',mon
 .btn-secondary:hover { background:#6e6e6e; }
 .file-info { font-size:10px; color:#8e8e8e; margin-left:auto; max-width:120px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
 
+/* ---- selected node indicator ---- */
+.selected-node-info { padding:6px 10px; background:#2d2d30; border-bottom:1px solid #3c3c3c; font-size:11px; }
+.selected-node-info .label { color:#8e8e8e; }
+.selected-node-info .name { color:#4ec9b0; margin-left:6px; }
+.selected-node-info .none { color:#6e6e6e; }
+
 /* ---- layer list ---- */
 .layer-list { flex:1; overflow-y:auto; overflow-x:hidden; padding:4px 0; }
 .layer-list::-webkit-scrollbar { width:6px; }
@@ -63,6 +58,9 @@ body { background:#1e1e1e; color:#d4d4d4; font-family:Consolas,'Courier New',mon
 .layer-icon { width:14px; flex-shrink:0; text-align:center; font-size:10px; margin-right:4px; }
 .layer-name { flex:1; overflow:hidden; text-overflow:ellipsis; }
 .layer-size { font-size:9px; color:#6e6e6e; margin-left:6px; }
+.apply-btn { padding:1px 6px; margin-left:6px; background:#0e639c; color:#fff; border:none; border-radius:2px; font-size:10px; cursor:pointer; }
+.apply-btn:hover { background:#1177bb; }
+.apply-btn:disabled { background:#5a5a5a; color:#8e8e8e; cursor:not-allowed; }
 
 /* ---- details ---- */
 .details { padding:8px 10px; background:#1e1e1e; border-top:1px solid #3c3c3c; }
@@ -85,8 +83,12 @@ body { background:#1e1e1e; color:#d4d4d4; font-family:Consolas,'Courier New',mon
 
 <div class="toolbar">
   <button class="btn btn-primary" id="openBtn">打开 PSD</button>
-  <button class="btn btn-secondary" id="clearBtn" style="display:none">清除选择</button>
   <span class="file-info" id="fileInfo"></span>
+</div>
+
+<div class="selected-node-info" id="selectedNodeInfo">
+  <span class="label">目标节点:</span>
+  <span class="none" id="selectedNodeName">无选中节点</span>
 </div>
 
 <div class="layer-list" id="layerList">
@@ -104,13 +106,14 @@ body { background:#1e1e1e; color:#d4d4d4; font-family:Consolas,'Courier New',mon
   var details   = document.getElementById('details');
   var detailsContent = document.getElementById('detailsContent');
   var openBtn   = document.getElementById('openBtn');
-  var clearBtn  = document.getElementById('clearBtn');
   var closeBtn  = document.getElementById('closeBtn');
   var fileInfo  = document.getElementById('fileInfo');
+  var selectedNodeName = document.getElementById('selectedNodeName');
 
   var psdData = null;
   var selectedLayer = null;
   var collapsedPaths = {};
+  var parentSelectedNodeLabel = null;  // 父窗口选中的节点标签
 
   function post(data) {
     window.opener && window.opener.postMessage(Object.assign({ source: 'psd-picker' }, data), '*');
@@ -125,15 +128,6 @@ body { background:#1e1e1e; color:#d4d4d4; font-family:Consolas,'Courier New',mon
     openBtn.textContent = '等待选择...';
     layerList.innerHTML = '<div class="status">请在主窗口中选择 PSD 文件...</div>';
     post({ type: 'open-file' });
-  });
-
-  // ---- clear ----
-  clearBtn.addEventListener('click', function() {
-    selectedLayer = null;
-    clearBtn.style.display = 'none';
-    details.style.display = 'none';
-    highlightRow(null);
-    post({ type: 'clear-selection' });
   });
 
   // ---- listen for parent messages ----
@@ -165,7 +159,6 @@ body { background:#1e1e1e; color:#d4d4d4; font-family:Consolas,'Courier New',mon
       if (result && result.success) {
         psdData = result;
         selectedLayer = null;
-        clearBtn.style.display = 'none';
         details.style.display = 'none';
         collapsedPaths = {};
         renderLayers(result.layers || []);
@@ -173,7 +166,32 @@ body { background:#1e1e1e; color:#d4d4d4; font-family:Consolas,'Courier New',mon
         layerList.innerHTML = '<div class="status error">' + escHtml((result && result.error) || '解析失败') + '</div>';
       }
     }
+
+    // 父窗口选中节点变化
+    if (data.type === 'selected-node-update') {
+      parentSelectedNodeLabel = data.nodeLabel;
+      updateSelectedNodeDisplay();
+      // 重新渲染图层列表以更新按钮状态
+      if (psdData && psdData.layers) {
+        renderLayers(psdData.layers);
+      }
+    }
+
+    // 坐标应用成功
+    if (data.type === 'apply-coords-success') {
+      // 可以显示成功提示
+    }
   });
+
+  function updateSelectedNodeDisplay() {
+    if (parentSelectedNodeLabel) {
+      selectedNodeName.className = 'name';
+      selectedNodeName.textContent = parentSelectedNodeLabel;
+    } else {
+      selectedNodeName.className = 'none';
+      selectedNodeName.textContent = '无选中节点';
+    }
+  }
 
   // ---- render ----
   var iconMap = { group:'📁', pixel:'🖼', text:'📝', shape:'⬛', smart:'🔗' };
@@ -194,32 +212,59 @@ body { background:#1e1e1e; color:#d4d4d4; font-family:Consolas,'Courier New',mon
   function buildItem(layer, depth, path) {
     var hasChildren = layer.type === 'group' && layer.children && layer.children.length > 0;
     var collapsed = !!collapsedPaths[path];
+    var isSelected = selectedLayer === layer;
+    var canApply = !!parentSelectedNodeLabel && layer.width > 0;
 
     var row = document.createElement('div');
-    row.className = 'layer-row' + (selectedLayer === layer ? ' selected' : '');
+    row.className = 'layer-row' + (isSelected ? ' selected' : '');
     row.style.paddingLeft = (6 + depth * 12) + 'px';
     row.dataset.path = path;
 
-    row.innerHTML =
+    var html =
       '<span class="layer-toggle">' + (hasChildren ? (collapsed ? '▶' : '▼') : '') + '</span>' +
       '<span class="layer-icon">' + (iconMap[layer.type] || '📄') + '</span>' +
-      '<span class="layer-name">' + escHtml(layer.name) + '</span>' +
-      (layer.width > 0 ? '<span class="layer-size">' + layer.width + '×' + layer.height + '</span>' : '');
+      '<span class="layer-name">' + escHtml(layer.name) + '</span>';
 
-    row.addEventListener('click', function(e) {
-      if (e.target.classList.contains('layer-toggle') && hasChildren) {
+    // 选中时显示"应用"按钮，否则显示尺寸
+    if (isSelected && layer.width > 0) {
+      html += '<button class="apply-btn"' + (canApply ? '' : ' disabled') + '>应用</button>';
+    } else if (layer.width > 0) {
+      html += '<span class="layer-size">' + layer.width + '×' + layer.height + '</span>';
+    }
+
+    row.innerHTML = html;
+
+    // 点击切换折叠
+    var toggle = row.querySelector('.layer-toggle');
+    if (toggle && hasChildren) {
+      toggle.addEventListener('click', function(e) {
+        e.stopPropagation();
         collapsedPaths[path] = !collapsedPaths[path];
         rebuildTree();
-        return;
-      }
+      });
+    }
+
+    // 点击行选中图层
+    row.addEventListener('click', function(e) {
+      if (e.target.classList.contains('apply-btn')) return;
       selectedLayer = layer;
-      highlightRow(row);
       showDetails(layer);
-      if (layer.width > 0) {
-        clearBtn.style.display = '';
-        post({ type: 'select-layer', layer: { name: layer.name, left: layer.left, top: layer.top, width: layer.width, height: layer.height } });
-      }
+      rebuildTree();
     });
+
+    // 应用按钮点击
+    var applyBtn = row.querySelector('.apply-btn');
+    if (applyBtn) {
+      applyBtn.addEventListener('click', function(e) {
+        e.stopPropagation();
+        if (!parentSelectedNodeLabel) return;
+        post({
+          type: 'apply-coords',
+          left: layer.left,
+          top: layer.top
+        });
+      });
+    }
 
     var fragment = document.createDocumentFragment();
     fragment.appendChild(row);
@@ -231,12 +276,6 @@ body { background:#1e1e1e; color:#d4d4d4; font-family:Consolas,'Courier New',mon
     }
 
     return fragment;
-  }
-
-  function highlightRow(activeRow) {
-    var rows = layerList.querySelectorAll('.layer-row');
-    rows.forEach(function(r) { r.classList.remove('selected'); });
-    if (activeRow) activeRow.classList.add('selected');
   }
 
   function rebuildTree() {
@@ -254,6 +293,9 @@ body { background:#1e1e1e; color:#d4d4d4; font-family:Consolas,'Courier New',mon
       '<div class="detail-row"><span class="detail-label">可见:</span><span class="detail-value">' + (layer.visible ? '是' : '否') + '</span></div>' +
       '<div class="detail-row"><span class="detail-label">不透明度:</span><span class="detail-value">' + layer.opacity + '</span></div>';
   }
+
+  // 初始化显示
+  updateSelectedNodeDisplay();
 })();
 </script>
 </body>

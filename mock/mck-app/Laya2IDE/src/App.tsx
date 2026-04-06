@@ -1,6 +1,5 @@
 import React, { useEffect, useRef } from 'react';
 import { SceneCanvas } from './components/Viewport/SceneCanvas';
-import { PsdLayerBoundsOverlay } from './components/Viewport/PsdLayerBoundsOverlay';
 import { HierarchyPanel } from './components/Hierarchy/HierarchyPanel';
 import { InspectorPanel } from './components/Inspector/InspectorPanel';
 import { AssetExplorerPanel } from './components/AssetExplorer/AssetExplorerPanel';
@@ -9,15 +8,6 @@ import { preloadImages } from './utils/sceneUtils';
 import { useSceneStore } from './store/sceneStore';
 import { SceneNode } from './types/scene';
 import { getPsdPickerHtml } from './components/AssetExplorer/psdPickerHtml';
-
-// PSD图层边界信息
-interface PsdLayerBounds {
-  name: string;
-  left: number;
-  top: number;
-  width: number;
-  height: number;
-}
 
 const LAYOUT_STORAGE_KEY = 'laya2ide.layout.v1';
 const LEFT_MIN_WIDTH = 180;
@@ -53,6 +43,7 @@ export function App() {
   const errorMsg = useSceneStore((state) => state.errorMsg);
   const isDirty = useSceneStore((state) => state.isDirty);
   const privateNodeState = useSceneStore((state) => state.privateNodeState);
+  const selectedHit = useSceneStore((state) => state.selectedHit);
   const setSceneData = useSceneStore((state) => state.setSceneData);
   const setErrorMsg = useSceneStore((state) => state.setErrorMsg);
   const initializePrivateNodeState = useSceneStore((state) => state.initializePrivateNodeState);
@@ -60,6 +51,7 @@ export function App() {
   const bumpVersion = useSceneStore((state) => state.bumpVersion);
   const undoLast = useSceneStore((state) => state.undoLast);
   const redoLast = useSceneStore((state) => state.redoLast);
+  const updateSelectedNodeProps = useSceneStore((state) => state.updateSelectedNodeProps);
 
   const originalFilePath = useRef('');
   const scenePath = useRef('');
@@ -84,7 +76,6 @@ export function App() {
   
   // PSD图层选择器 - 独立窗口
   const psdPickerWindowRef = useRef<Window | null>(null);
-  const [psdLayerBounds, setPsdLayerBounds] = React.useState<PsdLayerBounds | null>(null);
 
   const getTabId = () => {
     const urlParams = new URLSearchParams(window.location.search);
@@ -247,7 +238,6 @@ export function App() {
         clearInterval(checkClosed);
         if (psdPickerWindowRef.current === newWin) {
           psdPickerWindowRef.current = null;
-          setPsdLayerBounds(null);
         }
       }
     }, 1000);
@@ -295,24 +285,36 @@ export function App() {
         }
       }
 
-      if (data.type === 'select-layer') {
-        setPsdLayerBounds({
-          name: data.layer.name,
-          left: data.layer.left,
-          top: data.layer.top,
-          width: data.layer.width,
-          height: data.layer.height
-        });
-      }
-
-      if (data.type === 'clear-selection') {
-        setPsdLayerBounds(null);
+      if (data.type === 'apply-coords') {
+        // 子窗口请求应用坐标到选中节点（只应用坐标，不应用尺寸）
+        const node = selectedHit?.node;
+        if (node) {
+          updateSelectedNodeProps({
+            x: data.left,
+            y: data.top
+          });
+          // 通知子窗口应用成功
+          psdPickerWindowRef.current?.postMessage({
+            source: 'laya2ide', type: 'apply-coords-success', nodeLabel: selectedHit.node.label
+          }, '*');
+        }
       }
     };
 
     window.addEventListener('message', handleMessage);
     return () => window.removeEventListener('message', handleMessage);
-  }, []);
+  }, [selectedHit, updateSelectedNodeProps]);
+
+  // 向PSD选择器窗口同步选中节点信息
+  useEffect(() => {
+    if (psdPickerWindowRef.current && !psdPickerWindowRef.current.closed) {
+      psdPickerWindowRef.current.postMessage({
+        source: 'laya2ide',
+        type: 'selected-node-update',
+        nodeLabel: selectedHit?.node?.label || null
+      }, '*');
+    }
+  }, [selectedHit?.node?.label]);
 
   useEffect(() => {
     const isEditableTarget = (target: EventTarget | null) => {
@@ -512,9 +514,6 @@ export function App() {
         sceneData={sceneData as SceneNode | null}
         onOpenPsdPicker={handleOpenPsdPicker}
       />
-
-      {/* PSD图层边界覆盖层 */}
-      <PsdLayerBoundsOverlay bounds={psdLayerBounds} />
     </div>
   );
 }
