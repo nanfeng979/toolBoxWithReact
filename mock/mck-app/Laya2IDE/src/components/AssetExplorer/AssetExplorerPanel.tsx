@@ -1,7 +1,7 @@
 import React from 'react';
 import { AssetBreadcrumbArea } from './AssetBreadcrumbArea';
 import { AssetEntryGrid } from './AssetEntryGrid';
-import { AssetFunctionPanel } from './AssetFunctionPanel';
+import { AssetFunctionPanel, AssetFunctionPanelRef } from './AssetFunctionPanel';
 import { DEFAULT_PROJECT_PANE_WIDTH, EXTERNAL_WATCH_ID, PROJECT_WATCH_ID } from './assetExplorerConstants';
 import { applyDirChanges, collectSkinFolders, sortEntries } from './assetExplorerEntryUtils';
 import {
@@ -47,7 +47,7 @@ import {
 export class AssetExplorerPanel extends React.PureComponent<AssetExplorerPanelProps, AssetExplorerPanelState> {
   private projectHeaderRef = React.createRef<HTMLDivElement>();
   private externalHeaderRef = React.createRef<HTMLDivElement>();
-  private functionPanelRef = React.createRef<HTMLDivElement>();
+  private functionPanelRef = React.createRef<AssetFunctionPanelRef>();
   private rootRef = React.createRef<HTMLElement>();
   private dragSplitRef: { startX: number; startWidth: number } | null = null;
   private offDirectoryChanged: (() => void) | null = null;
@@ -283,7 +283,7 @@ export class AssetExplorerPanel extends React.PureComponent<AssetExplorerPanelPr
   }
 
   getFunctionPanelWidth() {
-    return Math.max(136, this.functionPanelRef.current?.clientWidth || 0);
+    return Math.max(136, this.functionPanelRef.current?.getWidth() || 0);
   }
 
   getHostApi() {
