@@ -4,9 +4,13 @@ import path from 'node:path'
 import fs from 'node:fs/promises'
 import { watch as fsWatch, type FSWatcher } from 'node:fs'
 import crypto from 'node:crypto'
+import { execFile } from 'node:child_process'
+import { promisify } from 'node:util'
 import { MiniAppService } from './services/miniAppService'
 import { PluginService } from './services/pluginService'
 import { ExplorerService } from './services/explorerService'
+
+const execFileAsync = promisify(execFile)
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url))
 
@@ -660,6 +664,53 @@ app.whenReady().then(() => {
     } catch (err: unknown) {
       console.error('Failed to save private state:', err);
       return { success: false, error: err instanceof Error ? err.message : 'unknown error' };
+    }
+  });
+
+  // ========== PSD Parser Handler ==========
+  ipcMain.handle('host:parse-psd', async (_event, filePath: string) => {
+    try {
+      const scriptPath = path.join(process.env.APP_ROOT!, 'scripts', 'parse_psd.py');
+      
+      // 尝试找到 Python 可执行文件
+      const pythonCommands = ['python3', 'python'];
+      let pythonPath = '';
+      
+      for (const cmd of pythonCommands) {
+        try {
+          await execFileAsync(cmd, ['--version']);
+          pythonPath = cmd;
+          break;
+        } catch {
+          // 继续尝试下一个
+        }
+      }
+      
+      if (!pythonPath) {
+        return { success: false, error: 'Python not found. Please install Python 3.' };
+      }
+      
+      // 设置环境变量强制UTF-8编码
+      const env = { ...process.env, PYTHONIOENCODING: 'utf-8' };
+      
+      const { stdout, stderr } = await execFileAsync(pythonPath, [scriptPath, filePath], {
+        maxBuffer: 50 * 1024 * 1024, // 50MB buffer for large PSD files
+        encoding: 'utf-8',
+        env
+      });
+      
+      if (stderr && !stdout) {
+        return { success: false, error: stderr };
+      }
+      
+      const result = JSON.parse(stdout);
+      return result;
+    } catch (err: unknown) {
+      console.error('Failed to parse PSD:', err);
+      return { 
+        success: false, 
+        error: err instanceof Error ? err.message : 'Unknown error during PSD parsing' 
+      };
     }
   });
 

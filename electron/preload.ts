@@ -20,6 +20,7 @@ if (window.location.protocol === 'miniapp:') {
     getThemeColor: () => ipcRenderer.invoke('host:get-theme-color'),
     getPrivateState: (appId: string, key: string) => ipcRenderer.invoke('host:private-state:get', appId, key),
     setPrivateState: (appId: string, key: string, value: any) => ipcRenderer.invoke('host:private-state:set', appId, key, value),
+    parsePsd: (filePath: string) => ipcRenderer.invoke('host:parse-psd', filePath),
   });
 } else {
   // --------- Expose some API to the Renderer process ---------

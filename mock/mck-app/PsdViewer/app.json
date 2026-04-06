@@ -1,0 +1,12 @@
+{
+  "id": "psd-viewer",
+  "name": "PSD Viewer",
+  "version": "0.1.0",
+  "description": "Parse and view PSD layer structure",
+  "framework": "react",
+  "entry": "src/main.tsx",
+  "react": {
+    "mountId": "root",
+    "title": "PSD Viewer"
+  }
+}
